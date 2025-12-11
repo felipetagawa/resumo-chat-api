@@ -35,8 +35,8 @@ public class GeminiController {
         }
 
         try {
-            String resumo = geminiService.gerarResumo(texto);
-            return ResponseEntity.ok(Map.of("resumo", resumo));
+            com.soften.support.gemini_resumo.dto.ResumoResponse resposta = geminiService.gerarResumo(texto);
+            return ResponseEntity.ok(resposta);
         } catch (RuntimeException e) {
             return ResponseEntity
                     .status(HttpStatus.BAD_GATEWAY) // erro na chamada externa (Gemini)
@@ -52,8 +52,8 @@ public class GeminiController {
                     .body(Map.of("erro", "Body não pode estar vazio."));
         }
         try {
-            String resumo = geminiService.gerarResumo(texto.trim());
-            return ResponseEntity.ok(Map.of("resumo", resumo));
+            com.soften.support.gemini_resumo.dto.ResumoResponse resposta = geminiService.gerarResumo(texto.trim());
+            return ResponseEntity.ok(resposta);
         } catch (RuntimeException e) {
             return ResponseEntity
                     .status(HttpStatus.BAD_GATEWAY)

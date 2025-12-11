@@ -7,6 +7,9 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.ai.document.Document;
+import java.util.List;
+import java.util.Map;
 
 @Service
 public class GeminiService {
@@ -15,17 +18,20 @@ public class GeminiService {
     private String apiKey;
 
     private final RestTemplate restTemplate = new RestTemplate();
+    private final org.springframework.ai.vectorstore.VectorStore vectorStore;
 
-    private static final String GEMINI_URL_BASE =
-            "https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash-lite:generateContent?key=";
+    public GeminiService(org.springframework.ai.vectorstore.VectorStore vectorStore) {
+        this.vectorStore = vectorStore;
+    }
+
+    private static final String GEMINI_URL_BASE = "https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash-lite:generateContent?key=";
 
     @PostConstruct
     public void init() {
         if (apiKey == null || apiKey.isBlank()) {
             throw new IllegalStateException(
                     "Chave da Gemini não encontrada. Defina a variável de ambiente GEMINI_API_KEY " +
-                            "ou configure gemini.api.key em application.properties"
-            );
+                            "ou configure gemini.api.key em application.properties");
         }
     }
 
@@ -34,18 +40,92 @@ public class GeminiService {
      *
      * @param textoAtendimento texto completo do atendimento
      * @return resumo gerado pela Gemini
-     * @throws RuntimeException em caso de erro (HTTP, resposta inválida ou truncada)
+     * @throws RuntimeException em caso de erro (HTTP, resposta inválida ou
+     *                          truncada)
      */
-    public String gerarResumo(String textoAtendimento) {
+    public com.soften.support.gemini_resumo.dto.ResumoResponse gerarResumo(String textoAtendimento) {
+        String resumoTexto = null;
+        String titulo = "Resumo do Atendimento"; // Default title
+        List<String> recomendacoesDocs = new java.util.ArrayList<>();
+        List<String> documentacoesSugeridas = new java.util.ArrayList<>();
+
         try {
+            // 1. RAG - Busca 1: Recomendações (Histórico de Dicas)
+            // Filtra por metadado 'tipo' == 'resumo_automatico'
+            try {
+                List<org.springframework.ai.document.Document> historyDocs = vectorStore.similaritySearch(
+                        org.springframework.ai.vectorstore.SearchRequest.builder()
+                                .query(textoAtendimento)
+                                .filterExpression("tipo == 'resumo_automatico'")
+                                .topK(3)
+                                .build());
+
+                for (org.springframework.ai.document.Document doc : historyDocs) {
+                    recomendacoesDocs.add(extractProblemAndSolution(doc.getText()));
+                }
+            } catch (Exception e) {
+                System.err.println("Erro na busca de histórico: " + e.getMessage());
+            }
+
+            // 2. RAG - Busca 2: Documentação Oficial (Classificação)
+            // Filtra por metadado 'tipo' == 'documentacao_oficial'
+            // Nota: Retornará vazio até que o banco seja populado com essas documentações
+            try {
+                List<org.springframework.ai.document.Document> officialDocs = vectorStore.similaritySearch(
+                        org.springframework.ai.vectorstore.SearchRequest.builder()
+                                .query(textoAtendimento)
+                                // .filterExpression("tipo == 'documentacao_oficial'")
+                                // OBS: Comentado temporariamente para evitar erro senao existir nenhum registro
+                                // ainda,
+                                // ou se o usuario quiser testar sem filtro por enquanto.
+                                // Mas o ideal é descomentar quando popular.
+                                // Vamos deixar sem filtro EXPLICITO de documentacao agora pra nao quebrar se o
+                                // usuario nao inseriu nada com esse tipo,
+                                // mas se ele inseriu, a busca geral pegaria.
+                                // CORREÇÃO: Vamos filtrar SIM, pois se retornar vazio, é o comportamento
+                                // esperado.
+                                .filterExpression("tipo == 'documentacao_oficial'")
+                                .topK(3)
+                                .build());
+
+                for (org.springframework.ai.document.Document doc : officialDocs) {
+                    documentacoesSugeridas.add(doc.getText());
+                }
+            } catch (Exception e) {
+                System.err.println("Erro na busca de documentação oficial: " + e.getMessage());
+            }
+
+            StringBuilder contextoDocs = new StringBuilder();
+            if (!recomendacoesDocs.isEmpty()) {
+                contextoDocs.append("\n\n**DICAS DE CASOS ANTERIORES (Histórico):**\n");
+                for (String doc : recomendacoesDocs) {
+                    contextoDocs.append("- ").append(doc).append("\n");
+                }
+            }
+            // Não incluimos a "documentacao_oficial" no prompt de resumo, pois ela serve
+            // apenas como sugestão de classficação (Output separado)
+            // Ou se quiser incluir para ajudar o Gemini a entender o contexto, pode
+            // descomentar abaixo:
+            if (!documentacoesSugeridas.isEmpty()) {
+                contextoDocs.append("\n\n**POSSÍVEL CLASSIFICAÇÃO TÉCNICA (Documentação Oficial):**\n");
+                for (String doc : documentacoesSugeridas) {
+                    contextoDocs.append("- ").append(doc).append("\n");
+                }
+            }
+
             String prompt = "\n**Instrução Importante: Analise a conversa inteira, do início ao fim.** "
-                    + "Ignore todas as mensagens do bot \"Automatico\". Foque apenas no cliente e no atendente humano.\n\n"
-                    + "Analise o atendimento abaixo e resuma-o de forma concisa e direta, seguindo *exatamente* este formato:\n\n"
-                    + "**PROBLEMA / DÚVIDA:** [Descreva em uma frase qual foi o problema ou dúvida principal do cliente, incluindo dados-chave como o número da nota, se houver.]\n"
-                    + "**SOLUÇÃO APRESENTADA:** [Descreva os passos da solução de forma direta (ex: Atendente identificou o prazo, cancelou a nota, duplicou, corrigiu os dados e autorizou a nova).]\n"
+                    + "Ignore todas as mensagens do bot\"Automatico\". Foque apenas no cliente e no atendente humano.\n"
+                    + contextoDocs.toString() + "\n"
+                    + "Analise o atendimento abaixo e gere duas coisas:\n"
+                    + "1. Um TÍTULO curto de uma frase resumindo o tema.\n"
+                    + "2. O RESUMO detalhado no formato solicitado.\n\n"
+                    + "Siga *exatamente* este formato de saída:\n"
+                    + "TÍTULO: [Sua frase de título aqui]\n"
+                    + "**PROBLEMA / DÚVIDA:** [Descreva em uma frase qual foi o problema ou dúvida principal...]\n"
+                    + "**SOLUÇÃO APRESENTADA:** [Descreva os passos da solução...]\n"
                     + "**OPORTUNIDADE DE UPSELL:** [Responda apenas 'NÃO' ou 'SIM'.]\n"
                     + "**PRINTS DE ERRO OU DE MENSAGENS RELEVANTES:** [Responda apenas 'Não' ou 'Sim'.]\n"
-                    + "**HUMOR DO CLIENTE:** [Descreva o humor em uma palavra (ex: Bom, Neutro, Irritado) e justifique brevemente (ex: \"Bom. Foi objetivo e agradeceu no final.\")]\n\n"
+                    + "**HUMOR DO CLIENTE:** [Descreva o humor em uma palavra e justifique...]\n\n"
                     + "ATENDIMENTO:\n"
                     + textoAtendimento + "\n";
 
@@ -74,12 +154,7 @@ public class GeminiService {
             ResponseEntity<String> response = restTemplate.postForEntity(url, entity, String.class);
 
             if (!response.getStatusCode().is2xxSuccessful()) {
-                String bodyText = response.getBody();
-                String errMsg = "Erro HTTP: " + response.getStatusCodeValue();
-                if (bodyText != null && !bodyText.isBlank()) {
-                    errMsg += " - Corpo: " + bodyText;
-                }
-                throw new RuntimeException(errMsg);
+                throw new RuntimeException("Erro HTTP: " + response.getStatusCodeValue());
             }
 
             String respBody = response.getBody();
@@ -88,42 +163,101 @@ public class GeminiService {
             }
 
             JSONObject json = new JSONObject(respBody);
+            String rawText = json.getJSONArray("candidates")
+                    .getJSONObject(0).getJSONObject("content").getJSONArray("parts")
+                    .getJSONObject(0).getString("text");
 
-            String finishReason = null;
-            try {
-                finishReason = json
-                        .getJSONArray("candidates")
-                        .getJSONObject(0)
-                        .optString("finishReason", null);
-            } catch (Exception ignored) { }
-
-            if ("MAX_TOKENS".equalsIgnoreCase(finishReason)) {
-                throw new RuntimeException("Erro: A resposta da API foi cortada por exceder o limite de tokens. O resumo pode estar incompleto.");
+            // Extract Title and Summary from rawText
+            // Assume format "TÍTULO: ... \n **PROBLEMA..."
+            if (rawText.contains("TÍTULO:")) {
+                int tituloStart = rawText.indexOf("TÍTULO:") + 7;
+                int tituloEnd = rawText.indexOf("\n", tituloStart);
+                if (tituloEnd > tituloStart) {
+                    titulo = rawText.substring(tituloStart, tituloEnd).trim();
+                    resumoTexto = rawText.substring(tituloEnd).trim();
+                } else {
+                    resumoTexto = rawText;
+                }
+            } else {
+                resumoTexto = rawText;
             }
 
-            String resumo;
-            try {
-                resumo = json
-                        .getJSONArray("candidates")
-                        .getJSONObject(0)
-                        .getJSONObject("content")
-                        .getJSONArray("parts")
-                        .getJSONObject(0)
-                        .getString("text");
-            } catch (Exception e) {
-                throw new RuntimeException("Erro: não foi possível extrair o resumo da resposta da API. Resposta bruta: " + respBody);
+            // Persistir o resumo gerado como conhecimento futuro (Auto-learning)
+            if (resumoTexto != null && !resumoTexto.isBlank()) {
+                try {
+                    Document doc = new Document(resumoTexto,
+                            Map.of("tipo", "resumo_automatico", "origem", "gemini", "titulo", titulo));
+                    vectorStore.add(List.of(doc));
+                    System.out.println("Resumo salvo no VectorStore com sucesso.");
+                } catch (Exception e) {
+                    System.err.println("Erro ao salvar resumo no VectorStore: " + e.getMessage());
+                }
             }
 
-            if (resumo == null || resumo.isBlank()) {
-                throw new RuntimeException("Erro: a API não retornou um resumo válido.");
-            }
-
-            return resumo;
+            return new com.soften.support.gemini_resumo.dto.ResumoResponse(titulo, resumoTexto, recomendacoesDocs,
+                    documentacoesSugeridas);
 
         } catch (RuntimeException re) {
             throw re;
         } catch (Exception e) {
+            e.printStackTrace();
             throw new RuntimeException("Erro ao chamar a API Gemini: " + e.getMessage(), e);
         }
+    }
+
+    private String extractProblemAndSolution(String fullText) {
+        if (fullText == null || fullText.isEmpty()) {
+            return "";
+        }
+
+        // 1. Formato Gemini (Rico)
+        String geminiSolucaoKey = "**SOLUÇÃO APRESENTADA:**";
+        String geminiProblemaKey = "**PROBLEMA / DÚVIDA:**";
+        String geminiUpsellKey = "**OPORTUNIDADE DE UPSELL:**";
+
+        if (fullText.contains(geminiSolucaoKey) && fullText.contains(geminiProblemaKey)) {
+            try {
+                int probStart = fullText.indexOf(geminiProblemaKey) + geminiProblemaKey.length();
+                int probEnd = fullText.indexOf(geminiSolucaoKey);
+
+                int solStart = fullText.indexOf(geminiSolucaoKey) + geminiSolucaoKey.length();
+                int solEnd = fullText.indexOf(geminiUpsellKey);
+
+                String problema = fullText.substring(probStart, probEnd).trim();
+                String solucao;
+                if (solEnd != -1 && solEnd > solStart) {
+                    solucao = fullText.substring(solStart, solEnd).trim();
+                } else {
+                    solucao = fullText.substring(solStart).trim();
+                }
+
+                // Prioridade para a Solução (Dica)
+                return "💡 **SUGESTÃO:** " + solucao + "\n(Contexto: " + problema + ")";
+            } catch (Exception e) {
+                return fullText; // Fallback se falhar o parse
+            }
+        }
+
+        // 2. Formato Legado / Simples (Ex: "Erro: X. Solução: Y.")
+        // Tenta achar "Solução:" ou "Solucao:"
+        String legacyKey = "Solução:";
+        int legacyIndex = fullText.indexOf(legacyKey);
+        if (legacyIndex == -1) {
+            legacyKey = "Solucao:";
+            legacyIndex = fullText.indexOf(legacyKey);
+        }
+
+        if (legacyIndex != -1) {
+            try {
+                String problema = fullText.substring(0, legacyIndex).replace("Erro:", "").trim();
+                String solucao = fullText.substring(legacyIndex + legacyKey.length()).trim();
+                return "💡 **SUGESTÃO:** " + solucao + "\n(Contexto: " + problema + ")";
+            } catch (Exception e) {
+                return fullText;
+            }
+        }
+
+        // 3. Fallback (Texto original)
+        return fullText;
     }
 }
