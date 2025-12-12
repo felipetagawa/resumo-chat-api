@@ -1,5 +1,7 @@
 <# : batch portion
 @REM ----------------------------------------------------------------------------
+@REM Força o uso do JDK 21 para o Maven Wrapper
+set JAVA_HOME=C:\Program Files\Java\jdk-21
 @REM Licensed to the Apache Software Foundation (ASF) under one
 @REM or more contributor license agreements.  See the NOTICE file
 @REM distributed with this work for additional information

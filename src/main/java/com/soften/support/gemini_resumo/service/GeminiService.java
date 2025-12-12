@@ -121,11 +121,11 @@ public class GeminiService {
                     + "2. O RESUMO detalhado no formato solicitado.\n\n"
                     + "Siga *exatamente* este formato de saída:\n"
                     + "TÍTULO: [Sua frase de título aqui]\n"
-                    + "**PROBLEMA / DÚVIDA:** [Descreva em uma frase qual foi o problema ou dúvida principal...]\n"
-                    + "**SOLUÇÃO APRESENTADA:** [Descreva os passos da solução...]\n"
-                    + "**OPORTUNIDADE DE UPSELL:** [Responda apenas 'NÃO' ou 'SIM'.]\n"
-                    + "**PRINTS DE ERRO OU DE MENSAGENS RELEVANTES:** [Responda apenas 'Não' ou 'Sim'.]\n"
-                    + "**HUMOR DO CLIENTE:** [Descreva o humor em uma palavra e justifique...]\n\n"
+                    + "PROBLEMA / DÚVIDA: [Descreva em uma frase qual foi o problema ou dúvida principal...]\n"
+                    + "SOLUÇÃO APRESENTADA: [Descreva os passos da solução...]\n"
+                    + "OPORTUNIDADE DE UPSELL: [Responda apenas 'NÃO' ou 'SIM'.]\n"
+                    + "PRINTS DE ERRO OU DE MENSAGENS RELEVANTES: [Responda apenas 'Não' ou 'Sim'.]\n"
+                    + "HUMOR DO CLIENTE: [Descreva o humor em uma palavra e justifique...]\n\n"
                     + "ATENDIMENTO:\n"
                     + textoAtendimento + "\n";
 
