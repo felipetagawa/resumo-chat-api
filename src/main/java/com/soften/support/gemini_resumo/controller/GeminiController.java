@@ -1,5 +1,6 @@
 package com.soften.support.gemini_resumo.controller;
 
+import com.soften.support.gemini_resumo.service.CalledService;
 import com.soften.support.gemini_resumo.service.GeminiService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -14,9 +15,11 @@ import java.util.Map;
 public class GeminiController {
 
     private final GeminiService geminiService;
+    private final CalledService calledService;
 
-    public GeminiController(GeminiService geminiService) {
+    public GeminiController(GeminiService geminiService, CalledService calledService) {
         this.geminiService = geminiService;
+        this.calledService = calledService;
     }
 
     @PostMapping(value = "/resumir", consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
@@ -35,8 +38,10 @@ public class GeminiController {
         }
 
         try {
-            String resumo = geminiService.gerarResumo(texto);
-            return ResponseEntity.ok(Map.of("resumo", resumo));
+            String summary = geminiService.generateSummary(texto);
+            calledService.SaveCall(summary);
+
+            return ResponseEntity.ok(Map.of("summary", summary));
         } catch (RuntimeException e) {
             return ResponseEntity
                     .status(HttpStatus.BAD_GATEWAY) // erro na chamada externa (Gemini)
@@ -52,8 +57,10 @@ public class GeminiController {
                     .body(Map.of("erro", "Body não pode estar vazio."));
         }
         try {
-            String resumo = geminiService.gerarResumo(texto.trim());
-            return ResponseEntity.ok(Map.of("resumo", resumo));
+            String resumo = geminiService.generateSummary(texto.trim());
+            calledService.SaveCall(resumo);
+
+            return ResponseEntity.ok(Map.of("summary", resumo));
         } catch (RuntimeException e) {
             return ResponseEntity
                     .status(HttpStatus.BAD_GATEWAY)
@@ -63,6 +70,6 @@ public class GeminiController {
 
     @GetMapping("/ping")
     public ResponseEntity<?> ping() {
-        return ResponseEntity.ok(Map.of("status", "ok", "app", "gemini-resumo"));
+        return ResponseEntity.ok(Map.of("status", "ok", "app", "gemini-summary"));
     }
 }
