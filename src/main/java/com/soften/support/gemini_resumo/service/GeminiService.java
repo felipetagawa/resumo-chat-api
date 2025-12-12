@@ -1,5 +1,7 @@
 package com.soften.support.gemini_resumo.service;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.PostConstruct;
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -7,7 +9,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
-// import org.springframework.ai.document.Document;
+
 import java.util.List;
 import java.util.Map;
 
@@ -16,15 +18,11 @@ public class GeminiService {
 
     @Value("${gemini.api.key:}")
     private String apiKey;
-
     private final RestTemplate restTemplate = new RestTemplate();
-    private final GoogleFileSearchService googleFileSearchService;
-
-    public GeminiService(GoogleFileSearchService googleFileSearchService) {
-        this.googleFileSearchService = googleFileSearchService;
-    }
-
     private static final String GEMINI_URL_BASE = "https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash-lite:generateContent?key=";
+
+    public GeminiService() {
+    }
 
     @PostConstruct
     public void init() {
@@ -35,37 +33,11 @@ public class GeminiService {
         }
     }
 
-    /**
-     * Gera um resumo a partir do texto do atendimento.
-     *
-     * @param textoAtendimento texto completo do atendimento
-     * @return resumo gerado pela Gemini
-     * @throws RuntimeException em caso de erro (HTTP, resposta inválida ou
-     *                          truncada)
-     */
-    public com.soften.support.gemini_resumo.dto.ResumoResponse gerarResumo(String textoAtendimento) {
-        String resumoTexto = null;
-        String titulo = "Resumo do Atendimento"; // Default title
-
+    private String generateGenericSummary(String textService, String contextPrompt) {
         try {
-
-            String prompt = "\n**Instrução Importante: Analise a conversa inteira, do início ao fim.** "
-                    + "Ignore todas as mensagens do bot \"Automatico\". Foque apenas no cliente e no atendente humano.\n"
-                    + "Analise o atendimento abaixo e gere os seguintes itens:\n"
-                    + "1. Um TÍTULO curto de uma frase resumindo o tema.\n"
-                    + "2. O RESUMO detalhado no formato solicitado.\n\n"
-                    + "Siga *exatamente* este formato de saída:\n"
-                    + "TÍTULO: [Sua frase de título aqui]\n"
-                    + "PROBLEMA / DÚVIDA: [Descreva em uma frase qual foi o problema ou dúvida principal...]\n"
-                    + "SOLUÇÃO APRESENTADA: [Descreva os passos da solução...]\n"
-                    + "OPORTUNIDADE DE UPSELL: [Responda apenas 'NÃO' ou 'SIM'.]\n"
-                    + "PRINTS DE ERRO OU DE MENSAGENS RELEVANTES: [Responda apenas 'Não' ou 'Sim'.]\n"
-                    + "HUMOR DO CLIENTE: [Descreva o humor em uma palavra e justifique...]\n\n"
-                    + "ATENDIMENTO:\n"
-                    + textoAtendimento + "\n";
+            String prompt = contextPrompt + "\n\nATENDIMENTO ANALISADO:\n" + textService + "\n";
 
             JSONObject body = new JSONObject();
-
             JSONArray contents = new JSONArray();
             JSONObject contentItem = new JSONObject();
             contentItem.put("role", "user");
@@ -82,7 +54,6 @@ public class GeminiService {
 
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
-
             HttpEntity<String> entity = new HttpEntity<>(body.toString(), headers);
 
             String url = GEMINI_URL_BASE + apiKey;
@@ -102,205 +73,129 @@ public class GeminiService {
                     .getJSONObject(0).getJSONObject("content").getJSONArray("parts")
                     .getJSONObject(0).getString("text");
 
-            // Normalize rawText to extract Summary and Title
-            if (rawText.contains("TÍTULO:")) {
-                int tituloStart = rawText.indexOf("TÍTULO:") + 7;
-                int tituloEnd = rawText.indexOf("\n", tituloStart);
-                if (tituloEnd > tituloStart) {
-                    titulo = rawText.substring(tituloStart, tituloEnd).trim();
-                    resumoTexto = rawText.substring(tituloEnd).trim();
-                } else {
-                    resumoTexto = rawText;
-                }
-            } else {
-                resumoTexto = rawText;
+            String finishReason = json
+                    .getJSONArray("candidates")
+                    .getJSONObject(0)
+                    .optString("finishReason", null);
+
+            if ("MAX_TOKENS".equalsIgnoreCase(finishReason)) {
+                throw new RuntimeException("Erro: A resposta da API foi cortada por exceder o limite de tokens.");
             }
 
-            // AUTO-SAVE REMOVED per user request (Manual Learning)
-            // The generated summary is now just returned, waiting for human approval.
+            String summary = json
+                    .getJSONArray("candidates")
+                    .getJSONObject(0)
+                    .getJSONObject("content")
+                    .getJSONArray("parts")
+                    .getJSONObject(0)
+                    .getString("text");
 
-            return new com.soften.support.gemini_resumo.dto.ResumoResponse(titulo, resumoTexto);
+            if (summary == null || summary.isBlank()) {
+                throw new RuntimeException("Erro: a API não retornou um summary válido.");
+            }
 
-        } catch (RuntimeException re) {
-            throw re;
+            return summary;
+
         } catch (Exception e) {
             e.printStackTrace();
             throw new RuntimeException("Erro ao chamar a API Gemini: " + e.getMessage(), e);
         }
     }
 
-    /**
-     * Salva manualmente um resumo aprovado pelo atendente no Google File Search.
-     */
-    public void salvarResumoManual(String titulo, String conteudo) {
+    public String generateSummary(String textService, String prompt) {
+        return generateGenericSummary(textService, prompt);
+    }
+
+    public String generateSummary(String textService) {
+        String prompt = createSummaryPrompt();
+        return generateGenericSummary(textService, prompt);
+    }
+
+    private String createSummaryPrompt() {
+        return """
+                **Instrução Importante:** Analise toda a conversa do início ao fim.
+                Ignore qualquer mensagem enviada pelo bot chamado "Automatico".
+                Considere apenas o cliente e o atendente humano.
+
+                Escreva **tudo em primeira pessoa**, como se **eu**, técnico, estivesse fazendo o summary.
+                O resultado deve ser explicito, contextual e seguir *exatamente* o formato abaixo:
+
+                **PROBLEMA / DÚVIDA:** [Descreva em UMA frase, curta porém completa, qual foi o problema ou dúvida principal do cliente.
+                Inclua um contexto mínimo que ajude a entender a situação (ex.: operação que ele tentava fazer, etapa em que o erro ocorreu ou o que estava impedindo a continuação).
+                Use informações críticas somente quando forem realmente necessárias para compreensão do problema.]
+
+                **SOLUÇÃO APRESENTADA:** [Descreva, em primeira pessoa, de forma clara e assertiva, tudo o que eu fiz para resolver o problema.
+                Explique o raciocínio, os passos tomados, verificações realizadas e ajustes aplicados, sempre de forma objetiva e com a resolução final.
+                Se houver documentos fiscais citados — como NF, NFe, Nota, Cupom, CT, CT-e, MDF-e, NFC-e — identifique todos e padronize sempre como: número doc: X.
+                Ignore totalmente números que sejam identificadores de AnyDesk.
+                Considere como AnyDesk qualquer sequência numérica com mais de 5 dígitos que não esteja claramente vinculada a um documento fiscal.
+                Não utilize esses números no summary e não os interprete.
+
+                **OPORTUNIDADE DE UPSELL:** [Responda apenas 'SIM' ou 'NÃO'. 'SIM' somente se houve oportunidade real de VENDA de produto ou serviço.
+                Elogios, avaliações ou conversas neutras NUNCA contam. Se responder 'SIM', descreva o contexto e informe se a venda foi concluída, não concluída ou se ficou em andamento.
+                Se responder 'NÃO', explique claramente o motivo (ex.: cliente não deu abertura, não havia necessidade, não havia contexto para oferta).]
+
+                **PRINTS DE ERRO OU DE MENSAGENS RELEVANTES:** [Responda apenas 'Sim' ou 'Não'.]
+
+                **HUMOR DO CLIENTE:** [Informe em UMA palavra: 'BOM', 'NEUTRO' e 'IRRITADO'.]
+
+                **MÓDULO:** [Selecione APENAS UMA categoria abaixo, escolhendo aquela que melhor representa o tema central do atendimento.
+                Analise o contexto e identifique sobre qual módulo o cliente realmente estava falando.
+                Escolha somente entre estas opções exatas, Se não houver clareza, escolha GENÉRICO.]:
+
+                - NF-E (NOTA FISCAL ELETRÔNICA)
+                - NFC-E (NOTA FISCAL DO CONSUMIDOR ELETRÔNICA)
+                - MDF-E
+                - CT-E
+                - FRENTE DE CAIXA
+                - CERTIFICADO
+                - CONFIGURAÇÃO DE CONTA
+                - COMERCIAL/VENDAS
+                - ESTOQUE
+                - FINANCEIRO
+                - BOLETOS
+                - MARKETPLACE / LOJA VIRTUAL
+                - RESTAURANTE
+                - GENÉRICO
+                - RELATÓRIO
+
+                Se houver documentos fiscais, considere qual módulo eles representam. Se houver mais de um assunto no chat, escolha o tema predominante.
+                """;
+    }
+
+    public String ask(String prompt) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+
+        Map<String, Object> parts = Map.of("text", prompt);
+        Map<String, Object> contents = Map.of("parts", List.of(parts));
+        Map<String, Object> body = Map.of("contents", List.of(contents));
+
+        HttpEntity<Map<String, Object>> request = new HttpEntity<>(body, headers);
+        String urlFinal = GEMINI_URL_BASE + apiKey;
+
         try {
-            // Extract "PROBLEMA / DÚVIDA" and "SOLUÇÃO APRESENTADA"
-            StringBuilder textoSalvo = new StringBuilder();
-            textoSalvo.append("TIPO: SOLUCAO_PASSADA\n");
-            textoSalvo.append("TITULO: ").append(titulo).append("\n");
-
-            String problema = extractSection(conteudo, "PROBLEMA / DÚVIDA:");
-            String solucao = extractSection(conteudo, "SOLUÇÃO APRESENTADA:");
-
-            if (problema != null)
-                textoSalvo.append("PROBLEMA: ").append(problema).append("\n");
-            if (solucao != null)
-                textoSalvo.append("SOLUÇÃO: ").append(solucao).append("\n");
-
-            if (problema == null && solucao == null) {
-                // Fallback: save everything if parsing fails
-                textoSalvo.append("CONTEUDO COMPLETO:\n").append(conteudo);
-            }
-
-            String fileName = "SOLUCAO_" + System.currentTimeMillis() + ".txt";
-            googleFileSearchService.uploadFile(fileName,
-                    textoSalvo.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8), "text/plain");
-
-            System.out.println("✅ Solução salva no Google File Search: " + fileName);
-
+            ResponseEntity<String> response = restTemplate.postForEntity(urlFinal, request, String.class);
+            return extractTextGemini(response.getBody());
         } catch (Exception e) {
-            System.err.println("❌ Erro ao salvar solução manual: " + e.getMessage());
+            throw new RuntimeException("Erro ao enviar requisição para o Gemini: " + e.getMessage());
         }
     }
 
-    private String extractSection(String text, String sectionName) {
-        if (text == null || !text.contains(sectionName))
-            return null;
-        int start = text.indexOf(sectionName) + sectionName.length();
-        // Better: Find next section or end of string.
-        // Our format usually has headers like "SOLUÇÃO APRESENTADA:".
-        // Let's take until double newline or next known header.
-
-        // Simple line extraction for now, or block extraction
-        String remainder = text.substring(start).trim();
-        String[] nextHeaders = { "SOLUÇÃO APRESENTADA:", "OPORTUNIDADE DE UPSELL:", "PRINTS DE ERRO",
-                "HUMOR DO CLIENTE:", "ATENDIMENTO:", "TÍTULO:" };
-
-        int minIndex = remainder.length();
-        for (String header : nextHeaders) {
-            int idx = remainder.indexOf(header);
-            if (idx != -1 && idx < minIndex) {
-                minIndex = idx;
-            }
+    private String extractTextGemini(String json) {
+        try {
+            JsonNode node = new ObjectMapper().readTree(json);
+            return node
+                    .path("candidates").get(0)
+                    .path("content")
+                    .path("parts").get(0)
+                    .path("text").asText();
+        } catch (Exception e) {
+            throw new RuntimeException("Erro ao extrair texto da resposta do Gemini: " + e.getMessage());
         }
-        return remainder.substring(0, minIndex).trim();
     }
 
-    /**
-     * Busca classificação (frase padrão) relevante baseada no resumo.
-     */
-    public List<Map<String, Object>> buscarDocumentacoes(String resumo) {
-        List<Map<String, Object>> documentacoesSugeridas = new java.util.ArrayList<>();
-
-        try {
-            String searchContext = resumo;
-            String problema = extractSection(resumo, "PROBLEMA / DÚVIDA:");
-            if (problema != null)
-                searchContext = problema;
-
-            // Few-shot examples to teach the model the exact format
-            String systemInstruction = "Você é um assistente de classificação que CITA LITERALMENTE linhas de um arquivo de documentação.\n"
-                    +
-                    "O arquivo CLASS_documentation_data_part1.txt contém categorias de problemas, uma por linha.\n" +
-                    "Exemplos de linhas do arquivo:\n" +
-                    "- ERRO: ACESSO NEGADO AO ACESSAR NF-E\n" +
-                    "- DUVIDA: CADASTRAR PRODUTO/SERVIÇO\n" +
-                    "- 508: CST INCOMPATÍVEL NA OPERAÇÃO COM NÃO CONTRIBUINTE\n" +
-                    "- DUVIDA: CONFIGURAR BAIXA DE ESTOQUE PELA NFE / NFCE\n\n" +
-                    "TAREFA: Encontre no arquivo a linha que melhor corresponde ao problema do usuário.\n" +
-                    "REGRA CRÍTICA: Você DEVE copiar a linha EXATAMENTE como está no arquivo.\n" +
-                    "NÃO invente, NÃO reformule, NÃO adicione prefixos como 'CLASS_'.\n" +
-                    "Se não tiver certeza absoluta, retorne as 2-3 linhas mais próximas do arquivo.";
-
-            // Direct query with emphasis on literal citation
-            String query = "Problema do cliente: \"" + searchContext + "\"\n\n" +
-                    "Busque no arquivo CLASS_documentation_data_part1.txt e retorne a linha LITERAL (cópia exata) que melhor classifica este problema.";
-
-            String aiResponse = googleFileSearchService.simpleSearch(query, systemInstruction);
-
-            org.springframework.ai.document.Document resultDoc = new org.springframework.ai.document.Document(
-                    aiResponse,
-                    Map.of("tipo", "sugestao_classificacao", "query", searchContext));
-
-            documentacoesSugeridas.add(Map.of(
-                    "id", resultDoc.getId(),
-                    "content", resultDoc.getText(),
-                    "metadata", resultDoc.getMetadata()));
-
-        } catch (Exception e) {
-            System.err.println("Erro na busca de classificação: " + e.getMessage());
-        }
-
-        return documentacoesSugeridas;
-    }
-
-    /**
-     * Busca soluções em atendimentos passados similares usando Google File Search.
-     */
-    public List<String> buscarSolucoesSimilares(String problema) {
-        List<String> solucoes = new java.util.ArrayList<>();
-        try {
-            System.out.println("🔍 [DEBUG] Buscando soluções similares para: " + problema);
-
-            String prompt = "Verifique nos arquivos de SOLUÇÕES PASSADAS (TIPO: SOLUCAO_PASSADA) se existe algum caso similar a este: '"
-                    + problema + "'. " +
-                    "Se encontrar, descreva qual foi o problema e qual foi a solução aplicada. " +
-                    "Se não encontrar nada similar, diga 'Nenhuma solução similar encontrada no histórico'.";
-
-            String aiResponse = googleFileSearchService.simpleSearch(prompt);
-
-            if (aiResponse != null && !aiResponse.contains("Nenhuma solução similar")) {
-                solucoes.add(aiResponse);
-            }
-
-        } catch (Exception e) {
-            System.err.println("❌ Erro ao buscar soluções similares: " + e.getMessage());
-        }
-        return solucoes;
-    }
-
-    /**
-     * Busca documentação oficial (Legacy wrapper, unused mostly now but kept for
-     * compatibility)
-     */
-    public List<org.springframework.ai.document.Document> buscarDocumentacaoOficialSmart(String query) {
-        // Reusing logic via simpleSearch directly in other methods,
-        // but keeping this if any controller calls it directly.
-        List<org.springframework.ai.document.Document> docs = new java.util.ArrayList<>();
-        try {
-            String resp = googleFileSearchService.simpleSearch("Responda com base na documentação: " + query);
-            docs.add(new org.springframework.ai.document.Document(resp));
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-        return docs;
-    }
-
-    /**
-     * Busca documentação oficial com filtro de categoria
-     * 
-     * @param query     Consulta de busca
-     * @param categoria Categoria para filtrar (ex: "manuais", "nfe", "cte", etc.)
-     * @return Lista de documentos filtrados pela categoria
-     */
-    public List<org.springframework.ai.document.Document> buscarDocumentacaoOficialSmart(String query,
-            String categoria) {
-        List<org.springframework.ai.document.Document> docs = new java.util.ArrayList<>();
-        try {
-            // Adiciona instrução de filtro por categoria na busca
-            String filteredQuery = "Responda com base na documentação da categoria '" + categoria + "': " + query;
-            String resp = googleFileSearchService.simpleSearch(filteredQuery);
-
-            // Cria documento com metadata incluindo a categoria
-            Map<String, Object> metadata = Map.of(
-                    "tipo", "documentacao_oficial",
-                    "categoria", categoria,
-                    "query", query);
-            docs.add(new org.springframework.ai.document.Document(resp, metadata));
-        } catch (Exception e) {
-            System.err.println("❌ Erro ao buscar documentação com filtro de categoria: " + e.getMessage());
-            e.printStackTrace();
-        }
-        return docs;
+    public String getPromptSummary() {
+        return createSummaryPrompt();
     }
 }
