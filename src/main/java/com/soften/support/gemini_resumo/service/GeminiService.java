@@ -51,7 +51,6 @@ public class GeminiService {
 
         try {
             // 1. RAG - Busca 1: Recomendações (Histórico de Dicas)
-            // Filtra por metadado 'tipo' == 'resumo_automatico'
             try {
                 List<org.springframework.ai.document.Document> historyDocs = vectorStore.similaritySearch(
                         org.springframework.ai.vectorstore.SearchRequest.builder()
@@ -67,56 +66,49 @@ public class GeminiService {
                 System.err.println("Erro na busca de histórico: " + e.getMessage());
             }
 
-            // 2. RAG - Busca 2: Documentação Oficial (Classificação)
-            // Filtra por metadado 'tipo' == 'documentacao_oficial'
-            // Nota: Retornará vazio até que o banco seja populado com essas documentações
+            // 2. RAG - Busca 2: Documentação Oficial (Preenchimento Direto)
+            // Alterado para retornar diretamente as 3 mais similares do banco, garantindo
+            // que não venha vazio.
             try {
                 List<org.springframework.ai.document.Document> officialDocs = vectorStore.similaritySearch(
                         org.springframework.ai.vectorstore.SearchRequest.builder()
                                 .query(textoAtendimento)
-                                // .filterExpression("tipo == 'documentacao_oficial'")
-                                // OBS: Comentado temporariamente para evitar erro senao existir nenhum registro
-                                // ainda,
-                                // ou se o usuario quiser testar sem filtro por enquanto.
-                                // Mas o ideal é descomentar quando popular.
-                                // Vamos deixar sem filtro EXPLICITO de documentacao agora pra nao quebrar se o
-                                // usuario nao inseriu nada com esse tipo,
-                                // mas se ele inseriu, a busca geral pegaria.
-                                // CORREÇÃO: Vamos filtrar SIM, pois se retornar vazio, é o comportamento
-                                // esperado.
                                 .filterExpression("tipo == 'documentacao_oficial'")
-                                .topK(3)
+                                .topK(3) // Retorna as 3 mais relevantes
                                 .build());
 
                 for (org.springframework.ai.document.Document doc : officialDocs) {
-                    documentacoesSugeridas.add(doc.getText());
+                    if (doc.getText() != null && !doc.getText().isBlank()) {
+                        documentacoesSugeridas.add(doc.getText());
+                    }
                 }
             } catch (Exception e) {
                 System.err.println("Erro na busca de documentação oficial: " + e.getMessage());
             }
 
             StringBuilder contextoDocs = new StringBuilder();
+
+            // Add History Tips to Context
             if (!recomendacoesDocs.isEmpty()) {
                 contextoDocs.append("\n\n**DICAS DE CASOS ANTERIORES (Histórico):**\n");
                 for (String doc : recomendacoesDocs) {
                     contextoDocs.append("- ").append(doc).append("\n");
                 }
             }
-            // Não incluimos a "documentacao_oficial" no prompt de resumo, pois ela serve
-            // apenas como sugestão de classficação (Output separado)
-            // Ou se quiser incluir para ajudar o Gemini a entender o contexto, pode
-            // descomentar abaixo:
+
+            // Add Official Documentation to Input Context (Optional, helps Gemini
+            // understand context)
             if (!documentacoesSugeridas.isEmpty()) {
-                contextoDocs.append("\n\n**POSSÍVEL CLASSIFICAÇÃO TÉCNICA (Documentação Oficial):**\n");
+                contextoDocs.append("\n\n**CONTEXTO TÉCNICO (Documentação Relacionada):**\n");
                 for (String doc : documentacoesSugeridas) {
                     contextoDocs.append("- ").append(doc).append("\n");
                 }
             }
 
             String prompt = "\n**Instrução Importante: Analise a conversa inteira, do início ao fim.** "
-                    + "Ignore todas as mensagens do bot\"Automatico\". Foque apenas no cliente e no atendente humano.\n"
+                    + "Ignore todas as mensagens do bot \"Automatico\". Foque apenas no cliente e no atendente humano.\n"
                     + contextoDocs.toString() + "\n"
-                    + "Analise o atendimento abaixo e gere duas coisas:\n"
+                    + "Analise o atendimento abaixo e gere os seguintes itens:\n"
                     + "1. Um TÍTULO curto de uma frase resumindo o tema.\n"
                     + "2. O RESUMO detalhado no formato solicitado.\n\n"
                     + "Siga *exatamente* este formato de saída:\n"
@@ -167,8 +159,7 @@ public class GeminiService {
                     .getJSONObject(0).getJSONObject("content").getJSONArray("parts")
                     .getJSONObject(0).getString("text");
 
-            // Extract Title and Summary from rawText
-            // Assume format "TÍTULO: ... \n **PROBLEMA..."
+            // Normalize rawText to extract Summary and Title
             if (rawText.contains("TÍTULO:")) {
                 int tituloStart = rawText.indexOf("TÍTULO:") + 7;
                 int tituloEnd = rawText.indexOf("\n", tituloStart);
