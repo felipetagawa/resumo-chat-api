@@ -150,23 +150,33 @@ public class GeminiService {
      * Busca documentações oficiais relevantes baseadas no resumo gerado.
      * 
      * @param resumo resumo do atendimento previamente gerado
-     * @return lista de documentações sugeridas
+     * @return lista de documentações sugeridas (Map com id, content, metadata)
      */
-    public List<String> buscarDocumentacoes(String resumo) {
-        List<String> documentacoesSugeridas = new java.util.ArrayList<>();
+    public List<Map<String, Object>> buscarDocumentacoes(String resumo) {
+        List<Map<String, Object>> documentacoesSugeridas = new java.util.ArrayList<>();
 
         try {
-            List<org.springframework.ai.document.Document> officialDocs = vectorStore.similaritySearch(
-                    org.springframework.ai.vectorstore.SearchRequest.builder()
-                            .query(resumo) // Usa o resumo refinado, não o texto cru
-                            .filterExpression("tipo == 'documentacao_oficial'")
-                            .topK(3)
-                            .build());
+            String searchContext = resumo;
+
+            // Attempt to extract "PROBLEMA / DÚVIDA" section for better context
+            if (resumo != null && resumo.contains("PROBLEMA / DÚVIDA:")) {
+                int problemaStart = resumo.indexOf("PROBLEMA / DÚVIDA:") + 18;
+                int problemaEnd = resumo.indexOf("\n", problemaStart);
+                if (problemaEnd > problemaStart) {
+                    searchContext = resumo.substring(problemaStart, problemaEnd).trim();
+                } else if (resumo.length() > problemaStart) {
+                    searchContext = resumo.substring(problemaStart).trim();
+                }
+            }
+
+            // Use Smart RAG
+            List<org.springframework.ai.document.Document> officialDocs = buscarDocumentacaoOficialSmart(searchContext);
 
             for (org.springframework.ai.document.Document doc : officialDocs) {
-                if (doc.getText() != null && !doc.getText().isBlank()) {
-                    documentacoesSugeridas.add(doc.getText());
-                }
+                documentacoesSugeridas.add(Map.of(
+                        "id", doc.getId(),
+                        "content", doc.getText(),
+                        "metadata", doc.getMetadata()));
             }
         } catch (Exception e) {
             System.err.println("Erro na busca de documentação oficial: " + e.getMessage());
@@ -268,6 +278,8 @@ public class GeminiService {
         List<org.springframework.ai.document.Document> relevantDocs = new java.util.ArrayList<>();
 
         try {
+            System.out.println("🔍 [DEBUG] Buscando documentação para query: " + query);
+
             // 1. Retrieval (Busca Vetorial Ampla - Top 5)
             List<org.springframework.ai.document.Document> candidates = vectorStore.similaritySearch(
                     org.springframework.ai.vectorstore.SearchRequest.builder()
@@ -276,8 +288,20 @@ public class GeminiService {
                             .topK(5)
                             .build());
 
-            if (candidates.isEmpty())
+            System.out.println("📊 [DEBUG] Candidatos encontrados: " + candidates.size());
+
+            if (candidates.isEmpty()) {
+                System.out.println("⚠️ [DEBUG] Nenhum candidato encontrado no VectorStore!");
                 return relevantDocs;
+            }
+
+            // Log dos candidatos encontrados
+            for (int i = 0; i < candidates.size(); i++) {
+                var doc = candidates.get(i);
+                System.out.println("📄 [DEBUG] Candidato " + i + ": " +
+                        doc.getMetadata().get("titulo") + " | Content: " +
+                        doc.getText().substring(0, Math.min(100, doc.getText().length())) + "...");
+            }
 
             // 2. Prepare Context for Validation
             JSONObject jsonContext = new JSONObject();
@@ -292,13 +316,15 @@ public class GeminiService {
             jsonContext.put("user_query", query);
 
             // 3. Generative Validation Prompt
-            String prompt = "Atue como um filtro de relevância documental. \n" +
-                    "Analise a query do usuário e os documentos candidatos abaixo. \n" +
+            String prompt = "Você é um filtro de relevância documental. " +
+                    "Analise a query do usuário e os documentos candidatos. " +
+                    "Retorne APENAS um objeto JSON válido sem nenhum texto adicional.\n\n" +
                     "JSON de Entrada: " + jsonContext.toString() + "\n\n" +
-                    "Tarefa: Retorne um JSON contendo uma lista de IDs dos documentos que são REALMENTE relevantes para a query. \n"
+                    "Tarefa: Retorne um JSON contendo uma lista de IDs dos documentos que são REALMENTE relevantes para a query. "
                     +
-                    "Se nenhum for relevante, retorne uma lista vazia. \n" +
-                    "Formato de Saída (JSON Puro): {\"relevant_ids\": [\"0\", \"2\"]}";
+                    "Se nenhum for relevante, retorne uma lista vazia.\n\n" +
+                    "IMPORTANTE: Sua resposta deve ser APENAS o JSON, sem ```json ou qualquer outro texto.\n\n" +
+                    "Formato de Saída: {\"relevant_ids\": [\"0\", \"2\"]}";
 
             // Call Gemini
             JSONObject body = new JSONObject();
@@ -311,8 +337,7 @@ public class GeminiService {
 
             JSONObject generationConfig = new JSONObject();
             generationConfig.put("temperature", 0.0); // Zero criatividade, pura lógica
-            generationConfig.put("responseMimeType", "application/json"); // Forçar JSON se o modelo suportar (Flash
-                                                                          // Lite suporta bem)
+            generationConfig.put("maxOutputTokens", 100); // Resposta curta
             body.put("generationConfig", generationConfig);
 
             HttpHeaders headers = new HttpHeaders();
@@ -328,9 +353,30 @@ public class GeminiService {
                         .getJSONObject("content").getJSONArray("parts").getJSONObject(0)
                         .getString("text");
 
+                System.out.println("🤖 [DEBUG] Resposta do Gemini: " + responseText);
+
+                // Clean response - remove markdown code blocks if present
+                String cleanedResponse = responseText.trim();
+                if (cleanedResponse.startsWith("```json")) {
+                    cleanedResponse = cleanedResponse.substring(7);
+                }
+                if (cleanedResponse.startsWith("```")) {
+                    cleanedResponse = cleanedResponse.substring(3);
+                }
+                if (cleanedResponse.endsWith("```")) {
+                    cleanedResponse = cleanedResponse.substring(0, cleanedResponse.length() - 3);
+                }
+                cleanedResponse = cleanedResponse.trim();
+
+                System.out.println("🧹 [DEBUG] Resposta limpa: " + cleanedResponse);
+
                 // Parse result
-                JSONObject resultJson = new JSONObject(responseText);
+                JSONObject resultJson = new JSONObject(cleanedResponse);
                 JSONArray validIds = resultJson.optJSONArray("relevant_ids");
+
+                System.out.println("✅ [DEBUG] IDs relevantes retornados: " +
+                        (validIds != null ? validIds.toString() : "null"));
+
                 if (validIds != null) {
                     for (int i = 0; i < validIds.length(); i++) {
                         int index = Integer.parseInt(validIds.getString(i));
@@ -342,13 +388,15 @@ public class GeminiService {
             }
 
         } catch (Exception e) {
-            System.err.println("Erro no Smart Docs RAG: " + e.getMessage());
+            System.err.println("❌ [DEBUG] Erro no Smart Docs RAG: " + e.getMessage());
+            e.printStackTrace();
             // Fallback: se der erro na validação, retorna o top 1 da busca burra (melhor
             // que nada)
             // Ou retorna vazio se preferir conservadorismo. Aqui vamos retornar vazio para
             // evitar alucinação.
         }
 
+        System.out.println("📚 [DEBUG] Total de docs relevantes: " + relevantDocs.size());
         return relevantDocs;
     }
 }

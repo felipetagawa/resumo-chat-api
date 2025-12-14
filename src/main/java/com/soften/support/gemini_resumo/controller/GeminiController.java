@@ -6,6 +6,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -82,7 +83,7 @@ public class GeminiController {
         }
 
         try {
-            java.util.List<String> documentacoes = geminiService.buscarDocumentacoes(resumo);
+            java.util.List<Map<String, Object>> documentacoes = geminiService.buscarDocumentacoes(resumo);
             return ResponseEntity.ok(Map.of("documentacoesSugeridas", documentacoes));
         } catch (RuntimeException e) {
             return ResponseEntity
@@ -131,6 +132,30 @@ public class GeminiController {
             geminiService.salvarResumoManual(titulo, conteudo);
             return ResponseEntity.ok(Map.of("message", "Resumo salvo na base de conhecimento."));
         } catch (RuntimeException e) {
+            return ResponseEntity
+                    .status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("erro", e.getMessage()));
+        }
+    }
+
+    @GetMapping("/documentacoes/debug")
+    public ResponseEntity<?> debugDocumentacoes(@RequestParam(defaultValue = "impressão") String query) {
+        try {
+            List<org.springframework.ai.document.Document> docs = geminiService.buscarDocumentacaoOficialSmart(query);
+
+            java.util.List<Map<String, Object>> resultado = new java.util.ArrayList<>();
+            for (org.springframework.ai.document.Document doc : docs) {
+                resultado.add(Map.of(
+                        "id", doc.getId(),
+                        "content", doc.getText(),
+                        "metadata", doc.getMetadata()));
+            }
+
+            return ResponseEntity.ok(Map.of(
+                    "query", query,
+                    "totalEncontrados", docs.size(),
+                    "documentos", resultado));
+        } catch (Exception e) {
             return ResponseEntity
                     .status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of("erro", e.getMessage()));
