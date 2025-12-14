@@ -46,68 +46,11 @@ public class GeminiService {
     public com.soften.support.gemini_resumo.dto.ResumoResponse gerarResumo(String textoAtendimento) {
         String resumoTexto = null;
         String titulo = "Resumo do Atendimento"; // Default title
-        List<String> recomendacoesDocs = new java.util.ArrayList<>();
-        List<String> documentacoesSugeridas = new java.util.ArrayList<>();
 
         try {
-            // 1. RAG - Busca 1: Recomendações (Histórico de Dicas)
-            try {
-                List<org.springframework.ai.document.Document> historyDocs = vectorStore.similaritySearch(
-                        org.springframework.ai.vectorstore.SearchRequest.builder()
-                                .query(textoAtendimento)
-                                .filterExpression("tipo == 'resumo_automatico'")
-                                .topK(3)
-                                .build());
-
-                for (org.springframework.ai.document.Document doc : historyDocs) {
-                    recomendacoesDocs.add(extractProblemAndSolution(doc.getText()));
-                }
-            } catch (Exception e) {
-                System.err.println("Erro na busca de histórico: " + e.getMessage());
-            }
-
-            // 2. RAG - Busca 2: Documentação Oficial (Preenchimento Direto)
-            // Alterado para retornar diretamente as 3 mais similares do banco, garantindo
-            // que não venha vazio.
-            try {
-                List<org.springframework.ai.document.Document> officialDocs = vectorStore.similaritySearch(
-                        org.springframework.ai.vectorstore.SearchRequest.builder()
-                                .query(textoAtendimento)
-                                .filterExpression("tipo == 'documentacao_oficial'")
-                                .topK(3) // Retorna as 3 mais relevantes
-                                .build());
-
-                for (org.springframework.ai.document.Document doc : officialDocs) {
-                    if (doc.getText() != null && !doc.getText().isBlank()) {
-                        documentacoesSugeridas.add(doc.getText());
-                    }
-                }
-            } catch (Exception e) {
-                System.err.println("Erro na busca de documentação oficial: " + e.getMessage());
-            }
-
-            StringBuilder contextoDocs = new StringBuilder();
-
-            // Add History Tips to Context
-            if (!recomendacoesDocs.isEmpty()) {
-                contextoDocs.append("\n\n**DICAS DE CASOS ANTERIORES (Histórico):**\n");
-                for (String doc : recomendacoesDocs) {
-                    contextoDocs.append("- ").append(doc).append("\n");
-                }
-            }
-
-            // Add Official Documentation to Input Context (Optional, helps Gemini
-            // understand context)
-            if (!documentacoesSugeridas.isEmpty()) {
-                contextoDocs.append("\n\n**CONTEXTO TÉCNICO (Documentação Relacionada):**\n");
-                for (String doc : documentacoesSugeridas) {
-                    contextoDocs.append("- ").append(doc).append("\n");
-                }
-            }
 
             String prompt = "\n**Instrução Importante: Analise a conversa inteira, do início ao fim.** "
                     + "Ignore todas as mensagens do bot \"Automatico\". Foque apenas no cliente e no atendente humano.\n"
-                    + contextoDocs.toString() + "\n"
                     + "Analise o atendimento abaixo e gere os seguintes itens:\n"
                     + "1. Um TÍTULO curto de uma frase resumindo o tema.\n"
                     + "2. O RESUMO detalhado no formato solicitado.\n\n"
@@ -146,7 +89,7 @@ public class GeminiService {
             ResponseEntity<String> response = restTemplate.postForEntity(url, entity, String.class);
 
             if (!response.getStatusCode().is2xxSuccessful()) {
-                throw new RuntimeException("Erro HTTP: " + response.getStatusCodeValue());
+                throw new RuntimeException("Erro HTTP: " + response.getStatusCode().value());
             }
 
             String respBody = response.getBody();
@@ -185,8 +128,7 @@ public class GeminiService {
                 }
             }
 
-            return new com.soften.support.gemini_resumo.dto.ResumoResponse(titulo, resumoTexto, recomendacoesDocs,
-                    documentacoesSugeridas);
+            return new com.soften.support.gemini_resumo.dto.ResumoResponse(titulo, resumoTexto);
 
         } catch (RuntimeException re) {
             throw re;
@@ -196,59 +138,209 @@ public class GeminiService {
         }
     }
 
-    private String extractProblemAndSolution(String fullText) {
-        if (fullText == null || fullText.isEmpty()) {
-            return "";
-        }
+    /**
+     * Busca documentações oficiais relevantes baseadas no resumo gerado.
+     * 
+     * @param resumo resumo do atendimento previamente gerado
+     * @return lista de documentações sugeridas
+     */
+    public List<String> buscarDocumentacoes(String resumo) {
+        List<String> documentacoesSugeridas = new java.util.ArrayList<>();
 
-        // 1. Formato Gemini (Rico)
-        String geminiSolucaoKey = "**SOLUÇÃO APRESENTADA:**";
-        String geminiProblemaKey = "**PROBLEMA / DÚVIDA:**";
-        String geminiUpsellKey = "**OPORTUNIDADE DE UPSELL:**";
+        try {
+            List<org.springframework.ai.document.Document> officialDocs = vectorStore.similaritySearch(
+                    org.springframework.ai.vectorstore.SearchRequest.builder()
+                            .query(resumo) // Usa o resumo refinado, não o texto cru
+                            .filterExpression("tipo == 'documentacao_oficial'")
+                            .topK(3)
+                            .build());
 
-        if (fullText.contains(geminiSolucaoKey) && fullText.contains(geminiProblemaKey)) {
-            try {
-                int probStart = fullText.indexOf(geminiProblemaKey) + geminiProblemaKey.length();
-                int probEnd = fullText.indexOf(geminiSolucaoKey);
-
-                int solStart = fullText.indexOf(geminiSolucaoKey) + geminiSolucaoKey.length();
-                int solEnd = fullText.indexOf(geminiUpsellKey);
-
-                String problema = fullText.substring(probStart, probEnd).trim();
-                String solucao;
-                if (solEnd != -1 && solEnd > solStart) {
-                    solucao = fullText.substring(solStart, solEnd).trim();
-                } else {
-                    solucao = fullText.substring(solStart).trim();
+            for (org.springframework.ai.document.Document doc : officialDocs) {
+                if (doc.getText() != null && !doc.getText().isBlank()) {
+                    documentacoesSugeridas.add(doc.getText());
                 }
-
-                // Prioridade para a Solução (Dica)
-                return "💡 **SUGESTÃO:** " + solucao + "\n(Contexto: " + problema + ")";
-            } catch (Exception e) {
-                return fullText; // Fallback se falhar o parse
             }
+        } catch (Exception e) {
+            System.err.println("Erro na busca de documentação oficial: " + e.getMessage());
         }
 
-        // 2. Formato Legado / Simples (Ex: "Erro: X. Solução: Y.")
-        // Tenta achar "Solução:" ou "Solucao:"
-        String legacyKey = "Solução:";
-        int legacyIndex = fullText.indexOf(legacyKey);
-        if (legacyIndex == -1) {
-            legacyKey = "Solucao:";
-            legacyIndex = fullText.indexOf(legacyKey);
-        }
+        return documentacoesSugeridas;
+    }
 
-        if (legacyIndex != -1) {
-            try {
-                String problema = fullText.substring(0, legacyIndex).replace("Erro:", "").trim();
-                String solucao = fullText.substring(legacyIndex + legacyKey.length()).trim();
-                return "💡 **SUGESTÃO:** " + solucao + "\n(Contexto: " + problema + ")";
-            } catch (Exception e) {
-                return fullText;
+    /**
+     * Busca soluções em atendimentos passados similares.
+     *
+     * @param problema descrição do problema atual
+     * @return lista de soluções encontradas em casos similares
+     */
+    public List<String> buscarSolucoesSimilares(String problema) {
+        List<String> solucoes = new java.util.ArrayList<>();
+
+        try {
+            // 1. Recuperação (Retrieval)
+            List<org.springframework.ai.document.Document> docs = vectorStore.similaritySearch(
+                    org.springframework.ai.vectorstore.SearchRequest.builder()
+                            .query(problema)
+                            .filterExpression("tipo == 'resumo_automatico'")
+                            .topK(3) // Pegamos os 3 mais próximos
+                            .build());
+
+            if (docs.isEmpty()) {
+                return solucoes;
             }
+
+            // 2. Montagem do Contexto
+            StringBuilder contextBuilder = new StringBuilder();
+            for (org.springframework.ai.document.Document doc : docs) {
+                contextBuilder.append("---\n").append(doc.getText()).append("\n");
+            }
+
+            // 3. Geração Aumentada (Generative Step)
+            String prompt = "Você é um especialista em suporte técnico. \n" +
+                    "O usuário tem o seguinte problema: \"" + problema + "\"\n\n" +
+                    "Abaixo estão casos passados que podem ou não ser relevantes:\n" +
+                    contextBuilder.toString() + "\n" +
+                    "Analise os casos passados. Se houver uma solução que se aplique ao problema ATUAL, " +
+                    "extraia e adapte a solução de forma clara e direta. " +
+                    "Se os casos passados não tiverem relação com o problema atual, responda APENAS: 'Nenhuma solução relevante encontrada.'\n"
+                    +
+                    "Não invente informações. Use apenas o contexto fornecido.";
+
+            // Reutilizando a lógica de chamada via RestTemplate (simplificado para exemplo,
+            // idealmente refatorar num metodo privado auxiliar)
+            JSONObject body = new JSONObject();
+            JSONArray contents = new JSONArray();
+            JSONObject contentItem = new JSONObject();
+            contentItem.put("role", "user");
+            JSONArray parts = new JSONArray();
+            parts.put(new JSONObject().put("text", prompt));
+            contentItem.put("parts", parts);
+            contents.put(contentItem);
+            body.put("contents", contents);
+
+            // Configurar tokens menores pois a resposta deve ser concisa
+            JSONObject generationConfig = new JSONObject();
+            generationConfig.put("temperature", 0.1); // Temperatura baixa para ser fiel ao contexto
+            generationConfig.put("maxOutputTokens", 500);
+            body.put("generationConfig", generationConfig);
+
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            HttpEntity<String> entity = new HttpEntity<>(body.toString(), headers);
+
+            String url = GEMINI_URL_BASE + apiKey;
+            ResponseEntity<String> response = restTemplate.postForEntity(url, entity, String.class);
+
+            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
+                JSONObject json = new JSONObject(response.getBody());
+                String aiResopnse = json.getJSONArray("candidates")
+                        .getJSONObject(0).getJSONObject("content").getJSONArray("parts")
+                        .getJSONObject(0).getString("text").trim();
+
+                if (!aiResopnse.contains("Nenhuma solução relevante encontrada")) {
+                    solucoes.add(aiResopnse);
+                }
+            }
+
+        } catch (Exception e) {
+            System.err.println("Erro na busca inteligente de soluções: " + e.getMessage());
+            // Fallback silencioso ou log
         }
 
-        // 3. Fallback (Texto original)
-        return fullText;
+        return solucoes;
+    }
+
+    /**
+     * Busca documentação oficial filtrando por relevância via Gemini (Smart RAG).
+     *
+     * @param query termo de busca do usuário
+     * @return lista de documentos validados como relevantes
+     */
+    public List<org.springframework.ai.document.Document> buscarDocumentacaoOficialSmart(String query) {
+        List<org.springframework.ai.document.Document> relevantDocs = new java.util.ArrayList<>();
+
+        try {
+            // 1. Retrieval (Busca Vetorial Ampla - Top 5)
+            List<org.springframework.ai.document.Document> candidates = vectorStore.similaritySearch(
+                    org.springframework.ai.vectorstore.SearchRequest.builder()
+                            .query(query)
+                            .filterExpression("tipo == 'documentacao_oficial'")
+                            .topK(5)
+                            .build());
+
+            if (candidates.isEmpty())
+                return relevantDocs;
+
+            // 2. Prepare Context for Validation
+            JSONObject jsonContext = new JSONObject();
+            JSONArray docsArray = new JSONArray();
+            for (int i = 0; i < candidates.size(); i++) {
+                JSONObject docJson = new JSONObject();
+                docJson.put("id", String.valueOf(i));
+                docJson.put("content", candidates.get(i).getText());
+                docsArray.put(docJson);
+            }
+            jsonContext.put("documents", docsArray);
+            jsonContext.put("user_query", query);
+
+            // 3. Generative Validation Prompt
+            String prompt = "Atue como um filtro de relevância documental. \n" +
+                    "Analise a query do usuário e os documentos candidatos abaixo. \n" +
+                    "JSON de Entrada: " + jsonContext.toString() + "\n\n" +
+                    "Tarefa: Retorne um JSON contendo uma lista de IDs dos documentos que são REALMENTE relevantes para a query. \n"
+                    +
+                    "Se nenhum for relevante, retorne uma lista vazia. \n" +
+                    "Formato de Saída (JSON Puro): {\"relevant_ids\": [\"0\", \"2\"]}";
+
+            // Call Gemini
+            JSONObject body = new JSONObject();
+            JSONArray contents = new JSONArray();
+            JSONObject contentItem = new JSONObject();
+            contentItem.put("role", "user");
+            contentItem.put("parts", new JSONArray().put(new JSONObject().put("text", prompt)));
+            contents.put(contentItem);
+            body.put("contents", contents);
+
+            JSONObject generationConfig = new JSONObject();
+            generationConfig.put("temperature", 0.0); // Zero criatividade, pura lógica
+            generationConfig.put("responseMimeType", "application/json"); // Forçar JSON se o modelo suportar (Flash
+                                                                          // Lite suporta bem)
+            body.put("generationConfig", generationConfig);
+
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            HttpEntity<String> entity = new HttpEntity<>(body.toString(), headers);
+
+            String url = GEMINI_URL_BASE + apiKey;
+            ResponseEntity<String> response = restTemplate.postForEntity(url, entity, String.class);
+
+            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
+                String responseText = new JSONObject(response.getBody())
+                        .getJSONArray("candidates").getJSONObject(0)
+                        .getJSONObject("content").getJSONArray("parts").getJSONObject(0)
+                        .getString("text");
+
+                // Parse result
+                JSONObject resultJson = new JSONObject(responseText);
+                JSONArray validIds = resultJson.optJSONArray("relevant_ids");
+                if (validIds != null) {
+                    for (int i = 0; i < validIds.length(); i++) {
+                        int index = Integer.parseInt(validIds.getString(i));
+                        if (index >= 0 && index < candidates.size()) {
+                            relevantDocs.add(candidates.get(index));
+                        }
+                    }
+                }
+            }
+
+        } catch (Exception e) {
+            System.err.println("Erro no Smart Docs RAG: " + e.getMessage());
+            // Fallback: se der erro na validação, retorna o top 1 da busca burra (melhor
+            // que nada)
+            // Ou retorna vazio se preferir conservadorismo. Aqui vamos retornar vazio para
+            // evitar alucinação.
+        }
+
+        return relevantDocs;
     }
 }

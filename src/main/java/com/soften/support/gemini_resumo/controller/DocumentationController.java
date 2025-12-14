@@ -14,9 +14,12 @@ import java.util.Optional;
 public class DocumentationController {
 
     private final VectorStore vectorStore;
+    private final com.soften.support.gemini_resumo.service.GeminiService geminiService;
 
-    public DocumentationController(VectorStore vectorStore) {
+    public DocumentationController(VectorStore vectorStore,
+            com.soften.support.gemini_resumo.service.GeminiService geminiService) {
         this.vectorStore = vectorStore;
+        this.geminiService = geminiService;
     }
 
     @PostMapping
@@ -45,12 +48,8 @@ public class DocumentationController {
 
     @GetMapping("/search")
     public ResponseEntity<?> searchDocumentation(@RequestParam String query) {
-        List<Document> docs = vectorStore.similaritySearch(
-                org.springframework.ai.vectorstore.SearchRequest.builder()
-                        .query(query)
-                        .filterExpression("tipo == 'documentacao_oficial'")
-                        .topK(10)
-                        .build());
+        // Use Smart RAG instead of direct vector search
+        List<Document> docs = geminiService.buscarDocumentacaoOficialSmart(query);
 
         // Map to simpler response including ID
         var response = docs.stream().map(d -> Map.of(

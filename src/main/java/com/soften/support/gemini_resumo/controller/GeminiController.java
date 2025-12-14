@@ -65,4 +65,54 @@ public class GeminiController {
     public ResponseEntity<?> ping() {
         return ResponseEntity.ok(Map.of("status", "ok", "app", "gemini-resumo"));
     }
+
+    @PostMapping(value = "/documentacoes", consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<?> buscarDocumentacoes(@RequestBody Map<String, Object> body) {
+        Object resumoObj = body.get("resumo");
+        if (resumoObj == null) {
+            return ResponseEntity
+                    .status(HttpStatus.BAD_REQUEST)
+                    .body(Map.of("erro", "Campo 'resumo' é obrigatório no body JSON."));
+        }
+        String resumo = resumoObj.toString().trim();
+        if (resumo.isEmpty()) {
+            return ResponseEntity
+                    .status(HttpStatus.BAD_REQUEST)
+                    .body(Map.of("erro", "Campo 'resumo' não pode estar vazio."));
+        }
+
+        try {
+            java.util.List<String> documentacoes = geminiService.buscarDocumentacoes(resumo);
+            return ResponseEntity.ok(Map.of("documentacoesSugeridas", documentacoes));
+        } catch (RuntimeException e) {
+            return ResponseEntity
+                    .status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("erro", e.getMessage()));
+        }
+    }
+
+    @PostMapping(value = "/solucoes", consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<?> buscarSolucoes(@RequestBody Map<String, Object> body) {
+        Object problemaObj = body.get("problema");
+        if (problemaObj == null) {
+            return ResponseEntity
+                    .status(HttpStatus.BAD_REQUEST)
+                    .body(Map.of("erro", "Campo 'problema' é obrigatório no body JSON."));
+        }
+        String problema = problemaObj.toString().trim();
+        if (problema.isEmpty()) {
+            return ResponseEntity
+                    .status(HttpStatus.BAD_REQUEST)
+                    .body(Map.of("erro", "Campo 'problema' não pode estar vazio."));
+        }
+
+        try {
+            java.util.List<String> solucoes = geminiService.buscarSolucoesSimilares(problema);
+            return ResponseEntity.ok(Map.of("solucoesSugeridas", solucoes));
+        } catch (RuntimeException e) {
+            return ResponseEntity
+                    .status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("erro", e.getMessage()));
+        }
+    }
 }
