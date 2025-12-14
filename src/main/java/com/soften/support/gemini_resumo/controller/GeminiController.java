@@ -115,4 +115,25 @@ public class GeminiController {
                     .body(Map.of("erro", e.getMessage()));
         }
     }
+
+    @PostMapping(value = "/salvar", consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<?> salvarResumoManual(@RequestBody Map<String, String> body) {
+        String titulo = body.get("titulo");
+        String conteudo = body.get("conteudo");
+
+        if (conteudo == null || conteudo.isBlank()) {
+            return ResponseEntity
+                    .status(HttpStatus.BAD_REQUEST)
+                    .body(Map.of("erro", "Campo 'conteudo' é obrigatório."));
+        }
+
+        try {
+            geminiService.salvarResumoManual(titulo, conteudo);
+            return ResponseEntity.ok(Map.of("message", "Resumo salvo na base de conhecimento."));
+        } catch (RuntimeException e) {
+            return ResponseEntity
+                    .status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("erro", e.getMessage()));
+        }
+    }
 }

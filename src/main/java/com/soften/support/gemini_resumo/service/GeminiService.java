@@ -116,17 +116,8 @@ public class GeminiService {
                 resumoTexto = rawText;
             }
 
-            // Persistir o resumo gerado como conhecimento futuro (Auto-learning)
-            if (resumoTexto != null && !resumoTexto.isBlank()) {
-                try {
-                    Document doc = new Document(resumoTexto,
-                            Map.of("tipo", "resumo_automatico", "origem", "gemini", "titulo", titulo));
-                    vectorStore.add(List.of(doc));
-                    System.out.println("Resumo salvo no VectorStore com sucesso.");
-                } catch (Exception e) {
-                    System.err.println("Erro ao salvar resumo no VectorStore: " + e.getMessage());
-                }
-            }
+            // AUTO-SAVE REMOVED per user request (Manual Learning)
+            // The generated summary is now just returned, waiting for human approval.
 
             return new com.soften.support.gemini_resumo.dto.ResumoResponse(titulo, resumoTexto);
 
@@ -135,6 +126,23 @@ public class GeminiService {
         } catch (Exception e) {
             e.printStackTrace();
             throw new RuntimeException("Erro ao chamar a API Gemini: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Salva manualmente um resumo aprovado pelo atendente.
+     */
+    public void salvarResumoManual(String titulo, String conteudo) {
+        if (conteudo == null || conteudo.isBlank())
+            return;
+        try {
+            Document doc = new Document(conteudo,
+                    Map.of("tipo", "resumo_automatico", "origem", "manual_approval", "titulo",
+                            titulo != null ? titulo : "Sem Título"));
+            vectorStore.add(List.of(doc));
+            System.out.println("Resumo salvo MANUALMENTE no VectorStore.");
+        } catch (Exception e) {
+            throw new RuntimeException("Erro ao salvar resumo: " + e.getMessage());
         }
     }
 
