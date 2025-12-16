@@ -1,0 +1,103 @@
+2025-12-16 15:43:17 [main] INFO  c.s.s.g.GeminiResumoApplication - Starting GeminiResumoApplication using Java 21.0.9 with PID 10380 (C:\Users\Onboard\Documents\gemini-resumo\target\classes started by Onboard in C:\Users\Onboard\Documents\gemini-resumo)
+2025-12-16 15:43:17 [main] DEBUG c.s.s.g.GeminiResumoApplication - Running with Spring Boot v3.5.7, Spring v6.2.12
+2025-12-16 15:43:17 [main] INFO  c.s.s.g.GeminiResumoApplication - No active profile set, falling back to 1 default profile: "default"
+2025-12-16 15:43:20 [main] INFO  o.s.b.w.e.tomcat.TomcatWebServer - Tomcat initialized with port 8080 (http)
+2025-12-16 15:43:20 [main] INFO  o.a.catalina.core.StandardService - Starting service [Tomcat]
+2025-12-16 15:43:20 [main] INFO  o.a.catalina.core.StandardEngine - Starting Servlet engine: [Apache Tomcat/10.1.48]
+2025-12-16 15:43:20 [main] INFO  o.a.c.c.C.[Tomcat].[localhost].[/] - Initializing Spring embedded WebApplicationContext
+2025-12-16 15:43:20 [main] INFO  o.s.b.w.s.c.ServletWebServerApplicationContext - Root WebApplicationContext: initialization completed in 2264 ms
+2025-12-16 15:43:23 [main] INFO  o.s.b.w.e.tomcat.TomcatWebServer - Tomcat started on port 8080 (http) with context path '/'
+2025-12-16 15:43:23 [main] INFO  c.s.s.g.GeminiResumoApplication - Started GeminiResumoApplication in 7.555 seconds (process running for 8.486)
+2025-12-16 15:43:53 [http-nio-8080-exec-1] INFO  o.a.c.c.C.[Tomcat].[localhost].[/] - Initializing Spring DispatcherServlet 'dispatcherServlet'
+2025-12-16 15:43:53 [http-nio-8080-exec-1] INFO  o.s.web.servlet.DispatcherServlet - Initializing Servlet 'dispatcherServlet'
+2025-12-16 15:43:53 [http-nio-8080-exec-1] INFO  o.s.web.servlet.DispatcherServlet - Completed initialization in 11 ms
+2025-12-16 15:46:52 [main] INFO  c.s.s.g.GeminiResumoApplication - Starting GeminiResumoApplication using Java 21.0.9 with PID 4092 (C:\Users\Onboard\Documents\gemini-resumo\target\classes started by Onboard in C:\Users\Onboard\Documents\gemini-resumo)
+2025-12-16 15:46:52 [main] DEBUG c.s.s.g.GeminiResumoApplication - Running with Spring Boot v3.5.7, Spring v6.2.12
+2025-12-16 15:46:52 [main] INFO  c.s.s.g.GeminiResumoApplication - No active profile set, falling back to 1 default profile: "default"
+2025-12-16 15:46:55 [main] INFO  o.s.b.w.e.tomcat.TomcatWebServer - Tomcat initialized with port 8080 (http)
+2025-12-16 15:46:55 [main] INFO  o.a.catalina.core.StandardService - Starting service [Tomcat]
+2025-12-16 15:46:55 [main] INFO  o.a.catalina.core.StandardEngine - Starting Servlet engine: [Apache Tomcat/10.1.48]
+2025-12-16 15:46:55 [main] INFO  o.a.c.c.C.[Tomcat].[localhost].[/] - Initializing Spring embedded WebApplicationContext
+2025-12-16 15:46:55 [main] INFO  o.s.b.w.s.c.ServletWebServerApplicationContext - Root WebApplicationContext: initialization completed in 2384 ms
+2025-12-16 15:46:58 [main] INFO  o.s.b.w.e.tomcat.TomcatWebServer - Tomcat started on port 8080 (http) with context path '/'
+2025-12-16 15:46:58 [main] INFO  c.s.s.g.GeminiResumoApplication - Started GeminiResumoApplication in 7.606 seconds (process running for 8.593)
+2025-12-16 15:48:48 [http-nio-8080-exec-1] INFO  o.a.c.c.C.[Tomcat].[localhost].[/] - Initializing Spring DispatcherServlet 'dispatcherServlet'
+2025-12-16 15:48:48 [http-nio-8080-exec-1] INFO  o.s.web.servlet.DispatcherServlet - Initializing Servlet 'dispatcherServlet'
+2025-12-16 15:48:48 [http-nio-8080-exec-1] INFO  o.s.web.servlet.DispatcherServlet - Completed initialization in 3 ms
+2025-12-16 17:06:58 [main] INFO  c.s.s.g.GeminiResumoApplication - Starting GeminiResumoApplication using Java 21.0.9 with PID 4860 (C:\Users\Onboard\Documents\gemini-resumo\target\classes started by Onboard in C:\Users\Onboard\Documents\gemini-resumo)
+2025-12-16 17:06:58 [main] DEBUG c.s.s.g.GeminiResumoApplication - Running with Spring Boot v3.5.7, Spring v6.2.12
+2025-12-16 17:06:58 [main] INFO  c.s.s.g.GeminiResumoApplication - No active profile set, falling back to 1 default profile: "default"
+2025-12-16 17:07:00 [main] INFO  o.s.b.w.e.tomcat.TomcatWebServer - Tomcat initialized with port 8080 (http)
+2025-12-16 17:07:00 [main] INFO  o.a.catalina.core.StandardService - Starting service [Tomcat]
+2025-12-16 17:07:00 [main] INFO  o.a.catalina.core.StandardEngine - Starting Servlet engine: [Apache Tomcat/10.1.48]
+2025-12-16 17:07:01 [main] INFO  o.a.c.c.C.[Tomcat].[localhost].[/] - Initializing Spring embedded WebApplicationContext
+2025-12-16 17:07:01 [main] INFO  o.s.b.w.s.c.ServletWebServerApplicationContext - Root WebApplicationContext: initialization completed in 2376 ms
+2025-12-16 17:07:02 [main] WARN  o.s.b.w.s.c.AnnotationConfigServletWebServerApplicationContext - Exception encountered during context initialization - cancelling refresh attempt: org.springframework.beans.factory.BeanCreationException: Error creating bean with name 'documentationController' defined in file [C:\Users\Onboard\Documents\gemini-resumo\target\classes\com\soften\support\gemini_resumo\controller\DocumentationController.class]: Failed to instantiate [com.soften.support.gemini_resumo.controller.DocumentationController]: Constructor threw exception
+2025-12-16 17:07:02 [main] INFO  o.a.catalina.core.StandardService - Stopping service [Tomcat]
+2025-12-16 17:07:02 [main] INFO  o.s.b.a.l.ConditionEvaluationReportLogger - 
+
+Error starting ApplicationContext. To display the condition evaluation report re-run your application with 'debug' enabled.
+2025-12-16 17:07:02 [main] ERROR o.s.boot.SpringApplication - Application run failed
+org.springframework.beans.factory.BeanCreationException: Error creating bean with name 'documentationController' defined in file [C:\Users\Onboard\Documents\gemini-resumo\target\classes\com\soften\support\gemini_resumo\controller\DocumentationController.class]: Failed to instantiate [com.soften.support.gemini_resumo.controller.DocumentationController]: Constructor threw exception
+	at org.springframework.beans.factory.support.ConstructorResolver.instantiate(ConstructorResolver.java:321)
+	at org.springframework.beans.factory.support.ConstructorResolver.autowireConstructor(ConstructorResolver.java:309)
+	at org.springframework.beans.factory.support.AbstractAutowireCapableBeanFactory.autowireConstructor(AbstractAutowireCapableBeanFactory.java:1395)
+	at org.springframework.beans.factory.support.AbstractAutowireCapableBeanFactory.createBeanInstance(AbstractAutowireCapableBeanFactory.java:1232)
+	at org.springframework.beans.factory.support.AbstractAutowireCapableBeanFactory.doCreateBean(AbstractAutowireCapableBeanFactory.java:569)
+	at org.springframework.beans.factory.support.AbstractAutowireCapableBeanFactory.createBean(AbstractAutowireCapableBeanFactory.java:529)
+	at org.springframework.beans.factory.support.AbstractBeanFactory.lambda$doGetBean$0(AbstractBeanFactory.java:339)
+	at org.springframework.beans.factory.support.DefaultSingletonBeanRegistry.getSingleton(DefaultSingletonBeanRegistry.java:373)
+	at org.springframework.beans.factory.support.AbstractBeanFactory.doGetBean(AbstractBeanFactory.java:337)
+	at org.springframework.beans.factory.support.AbstractBeanFactory.getBean(AbstractBeanFactory.java:202)
+	at org.springframework.beans.factory.support.DefaultListableBeanFactory.instantiateSingleton(DefaultListableBeanFactory.java:1228)
+	at org.springframework.beans.factory.support.DefaultListableBeanFactory.preInstantiateSingleton(DefaultListableBeanFactory.java:1194)
+	at org.springframework.beans.factory.support.DefaultListableBeanFactory.preInstantiateSingletons(DefaultListableBeanFactory.java:1130)
+	at org.springframework.context.support.AbstractApplicationContext.finishBeanFactoryInitialization(AbstractApplicationContext.java:990)
+	at org.springframework.context.support.AbstractApplicationContext.refresh(AbstractApplicationContext.java:627)
+	at org.springframework.boot.web.servlet.context.ServletWebServerApplicationContext.refresh(ServletWebServerApplicationContext.java:146)
+	at org.springframework.boot.SpringApplication.refresh(SpringApplication.java:752)
+	at org.springframework.boot.SpringApplication.refreshContext(SpringApplication.java:439)
+	at org.springframework.boot.SpringApplication.run(SpringApplication.java:318)
+	at org.springframework.boot.SpringApplication.run(SpringApplication.java:1361)
+	at org.springframework.boot.SpringApplication.run(SpringApplication.java:1350)
+	at com.soften.support.gemini_resumo.GeminiResumoApplication.main(GeminiResumoApplication.java:10)
+Caused by: org.springframework.beans.BeanInstantiationException: Failed to instantiate [com.soften.support.gemini_resumo.controller.DocumentationController]: Constructor threw exception
+	at org.springframework.beans.BeanUtils.instantiateClass(BeanUtils.java:223)
+	at org.springframework.beans.factory.support.SimpleInstantiationStrategy.instantiate(SimpleInstantiationStrategy.java:146)
+	at org.springframework.beans.factory.support.ConstructorResolver.instantiate(ConstructorResolver.java:318)
+	... 21 common frames omitted
+Caused by: java.lang.Error: Unresolved compilation problem: 
+	Syntax error on token "}", delete this token
+
+	at com.soften.support.gemini_resumo.controller.DocumentationController.<init>(DocumentationController.java:92)
+	at java.base/jdk.internal.reflect.DirectConstructorHandleAccessor.newInstance(DirectConstructorHandleAccessor.java:62)
+	at java.base/java.lang.reflect.Constructor.newInstanceWithCaller(Constructor.java:502)
+	at java.base/java.lang.reflect.Constructor.newInstance(Constructor.java:486)
+	at org.springframework.beans.BeanUtils.instantiateClass(BeanUtils.java:210)
+	... 23 common frames omitted
+2025-12-16 17:09:52 [main] INFO  c.s.s.g.GeminiResumoApplication - Starting GeminiResumoApplication using Java 21.0.9 with PID 10188 (C:\Users\Onboard\Documents\gemini-resumo\target\classes started by Onboard in C:\Users\Onboard\Documents\gemini-resumo)
+2025-12-16 17:09:52 [main] DEBUG c.s.s.g.GeminiResumoApplication - Running with Spring Boot v3.5.7, Spring v6.2.12
+2025-12-16 17:09:52 [main] INFO  c.s.s.g.GeminiResumoApplication - No active profile set, falling back to 1 default profile: "default"
+2025-12-16 17:09:54 [main] INFO  o.s.b.w.e.tomcat.TomcatWebServer - Tomcat initialized with port 8080 (http)
+2025-12-16 17:09:54 [main] INFO  o.a.catalina.core.StandardService - Starting service [Tomcat]
+2025-12-16 17:09:54 [main] INFO  o.a.catalina.core.StandardEngine - Starting Servlet engine: [Apache Tomcat/10.1.48]
+2025-12-16 17:09:55 [main] INFO  o.a.c.c.C.[Tomcat].[localhost].[/] - Initializing Spring embedded WebApplicationContext
+2025-12-16 17:09:55 [main] INFO  o.s.b.w.s.c.ServletWebServerApplicationContext - Root WebApplicationContext: initialization completed in 2590 ms
+2025-12-16 17:09:57 [main] INFO  o.s.b.w.e.tomcat.TomcatWebServer - Tomcat started on port 8080 (http) with context path '/'
+2025-12-16 17:09:57 [main] INFO  c.s.s.g.GeminiResumoApplication - Started GeminiResumoApplication in 6.65 seconds (process running for 8.448)
+2025-12-16 17:12:07 [http-nio-8080-exec-1] INFO  o.a.c.c.C.[Tomcat].[localhost].[/] - Initializing Spring DispatcherServlet 'dispatcherServlet'
+2025-12-16 17:12:07 [http-nio-8080-exec-1] INFO  o.s.web.servlet.DispatcherServlet - Initializing Servlet 'dispatcherServlet'
+2025-12-16 17:12:07 [http-nio-8080-exec-1] INFO  o.s.web.servlet.DispatcherServlet - Completed initialization in 1 ms
+2025-12-16 17:18:43 [main] INFO  c.s.s.g.GeminiResumoApplication - Starting GeminiResumoApplication using Java 21.0.9 with PID 13020 (C:\Users\Onboard\Documents\gemini-resumo\target\classes started by Onboard in C:\Users\Onboard\Documents\gemini-resumo)
+2025-12-16 17:18:43 [main] DEBUG c.s.s.g.GeminiResumoApplication - Running with Spring Boot v3.5.7, Spring v6.2.12
+2025-12-16 17:18:43 [main] INFO  c.s.s.g.GeminiResumoApplication - No active profile set, falling back to 1 default profile: "default"
+2025-12-16 17:18:46 [main] INFO  o.s.b.w.e.tomcat.TomcatWebServer - Tomcat initialized with port 8080 (http)
+2025-12-16 17:18:46 [main] INFO  o.a.catalina.core.StandardService - Starting service [Tomcat]
+2025-12-16 17:18:46 [main] INFO  o.a.catalina.core.StandardEngine - Starting Servlet engine: [Apache Tomcat/10.1.48]
+2025-12-16 17:18:46 [main] INFO  o.a.c.c.C.[Tomcat].[localhost].[/] - Initializing Spring embedded WebApplicationContext
+2025-12-16 17:18:46 [main] INFO  o.s.b.w.s.c.ServletWebServerApplicationContext - Root WebApplicationContext: initialization completed in 2161 ms
+2025-12-16 17:18:48 [main] INFO  o.s.b.w.e.tomcat.TomcatWebServer - Tomcat started on port 8080 (http) with context path '/'
+2025-12-16 17:18:48 [main] INFO  c.s.s.g.GeminiResumoApplication - Started GeminiResumoApplication in 5.925 seconds (process running for 6.796)
+2025-12-16 17:19:40 [http-nio-8080-exec-2] INFO  o.a.c.c.C.[Tomcat].[localhost].[/] - Initializing Spring DispatcherServlet 'dispatcherServlet'
+2025-12-16 17:19:40 [http-nio-8080-exec-2] INFO  o.s.web.servlet.DispatcherServlet - Initializing Servlet 'dispatcherServlet'
+2025-12-16 17:19:40 [http-nio-8080-exec-2] INFO  o.s.web.servlet.DispatcherServlet - Completed initialization in 2 ms

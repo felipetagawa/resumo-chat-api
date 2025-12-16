@@ -183,6 +183,52 @@ public class GoogleFileSearchService {
         return false;
     }
 
+    /**
+     * Lista todos os arquivos armazenados no Google File Search
+     * 
+     * @return Lista de informações sobre os arquivos (nome, ID, tamanho, etc.)
+     */
+    public java.util.List<java.util.Map<String, Object>> listAllFiles() {
+        java.util.List<java.util.Map<String, Object>> fileList = new java.util.ArrayList<>();
+
+        try {
+            String listUrl = BASE_URL + "/files?key=" + apiKey;
+            ResponseEntity<String> response = restTemplate.getForEntity(listUrl, String.class);
+
+            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
+                JSONObject json = new JSONObject(response.getBody());
+
+                if (json.has("files")) {
+                    JSONArray files = json.getJSONArray("files");
+
+                    for (int i = 0; i < files.length(); i++) {
+                        JSONObject file = files.getJSONObject(i);
+
+                        java.util.Map<String, Object> fileInfo = new java.util.HashMap<>();
+                        fileInfo.put("name", file.optString("name", "N/A"));
+                        fileInfo.put("displayName", file.optString("displayName", "N/A"));
+                        fileInfo.put("mimeType", file.optString("mimeType", "N/A"));
+                        fileInfo.put("sizeBytes", file.optString("sizeBytes", "0"));
+                        fileInfo.put("createTime", file.optString("createTime", "N/A"));
+                        fileInfo.put("updateTime", file.optString("updateTime", "N/A"));
+                        fileInfo.put("state", file.optString("state", "N/A"));
+
+                        fileList.add(fileInfo);
+                    }
+
+                    System.out.println("✅ Listados " + fileList.size() + " arquivos do Google File Search");
+                } else {
+                    System.out.println("⚠️ Nenhum arquivo encontrado no Google File Search");
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("❌ Erro ao listar arquivos: " + e.getMessage());
+            e.printStackTrace();
+        }
+
+        return fileList;
+    }
+
     public String simpleSearch(String query) {
         return simpleSearch(query, null);
     }
@@ -227,16 +273,55 @@ public class GoogleFileSearchService {
             ResponseEntity<String> response = restTemplate.postForEntity(generateUrl, entity, String.class);
 
             if (response.getStatusCode().is2xxSuccessful()) {
-                JSONObject json = new JSONObject(response.getBody());
-                // Extract text
-                return json.getJSONArray("candidates")
-                        .getJSONObject(0).getJSONObject("content")
-                        .getJSONArray("parts").getJSONObject(0).getString("text");
+                String responseBody = response.getBody();
+                System.out.println("📥 File Search Response: " + responseBody);
+
+                try {
+                    JSONObject json = new JSONObject(responseBody);
+
+                    // Check if we have candidates
+                    if (!json.has("candidates") || json.getJSONArray("candidates").length() == 0) {
+                        System.err.println("❌ No candidates in response");
+                        return "Nenhuma correspondência encontrada na documentação.";
+                    }
+
+                    JSONObject candidate = json.getJSONArray("candidates").getJSONObject(0);
+
+                    // Check if content exists
+                    if (!candidate.has("content")) {
+                        System.err.println("❌ No content in candidate");
+                        return "Resposta sem conteúdo.";
+                    }
+
+                    JSONObject content = candidate.getJSONObject("content");
+
+                    // Check if parts exists
+                    if (!content.has("parts") || content.getJSONArray("parts").length() == 0) {
+                        System.err.println("❌ No parts in content");
+                        return "Resposta sem partes de texto.";
+                    }
+
+                    // Extract text from first part
+                    JSONObject firstPart = content.getJSONArray("parts").getJSONObject(0);
+
+                    if (firstPart.has("text")) {
+                        return firstPart.getString("text");
+                    } else {
+                        System.err.println("❌ No text in first part: " + firstPart.toString());
+                        return "Resposta sem texto.";
+                    }
+
+                } catch (Exception parseException) {
+                    System.err.println("❌ Error parsing response: " + parseException.getMessage());
+                    System.err.println("Response was: " + responseBody);
+                    return "Erro ao processar resposta: " + parseException.getMessage();
+                }
             }
 
             return "Error: " + response.getStatusCode();
 
         } catch (Exception e) {
+            e.printStackTrace();
             return "Error searching: " + e.getMessage();
         }
     }

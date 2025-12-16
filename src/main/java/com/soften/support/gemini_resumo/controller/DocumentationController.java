@@ -61,9 +61,11 @@ public class DocumentationController {
     // }
 
     @GetMapping("/search")
-    public ResponseEntity<?> searchDocumentation(@RequestParam String query) {
-        // Use Smart RAG instead of direct vector search
-        List<Document> docs = geminiService.buscarDocumentacaoOficialSmart(query);
+    public ResponseEntity<?> searchDocumentation(
+            @RequestParam String query,
+            @RequestParam(required = false, defaultValue = "manuais") String categoria) {
+        // Use Smart RAG instead of direct vector search, with category filter
+        List<Document> docs = geminiService.buscarDocumentacaoOficialSmart(query, categoria);
 
         // Map to simpler response including ID
         var response = docs.stream().map(d -> Map.of(
@@ -72,5 +74,18 @@ public class DocumentationController {
                 "metadata", d.getMetadata())).toList();
 
         return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/list")
+    public ResponseEntity<?> listAllFiles() {
+        try {
+            var files = googleFileSearchService.listAllFiles();
+            return ResponseEntity.ok(Map.of(
+                    "totalFiles", files.size(),
+                    "files", files));
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError()
+                    .body(Map.of("error", "Erro ao listar arquivos: " + e.getMessage()));
+        }
     }
 }

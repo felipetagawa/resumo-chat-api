@@ -198,14 +198,25 @@ public class GeminiService {
             if (problema != null)
                 searchContext = problema;
 
-            // Prompt forcing classification
-            String prompt = "Analise o seguinte problema: '" + searchContext + "'. " +
-                    "Consulte os arquivos de CLASSIFICAÇÃO (listas de frases numeradas ou com códigos) " +
-                    "e identifique a frase exata que melhor categoriza este problema. " +
-                    "Retorne APENAS a frase exata encontrada no arquivo (com o código se houver). " +
-                    "Se houver incerteza, liste as 3 melhores opções.";
+            // Few-shot examples to teach the model the exact format
+            String systemInstruction = "Você é um assistente de classificação que CITA LITERALMENTE linhas de um arquivo de documentação.\n"
+                    +
+                    "O arquivo CLASS_documentation_data_part1.txt contém categorias de problemas, uma por linha.\n" +
+                    "Exemplos de linhas do arquivo:\n" +
+                    "- ERRO: ACESSO NEGADO AO ACESSAR NF-E\n" +
+                    "- DUVIDA: CADASTRAR PRODUTO/SERVIÇO\n" +
+                    "- 508: CST INCOMPATÍVEL NA OPERAÇÃO COM NÃO CONTRIBUINTE\n" +
+                    "- DUVIDA: CONFIGURAR BAIXA DE ESTOQUE PELA NFE / NFCE\n\n" +
+                    "TAREFA: Encontre no arquivo a linha que melhor corresponde ao problema do usuário.\n" +
+                    "REGRA CRÍTICA: Você DEVE copiar a linha EXATAMENTE como está no arquivo.\n" +
+                    "NÃO invente, NÃO reformule, NÃO adicione prefixos como 'CLASS_'.\n" +
+                    "Se não tiver certeza absoluta, retorne as 2-3 linhas mais próximas do arquivo.";
 
-            String aiResponse = googleFileSearchService.simpleSearch(prompt);
+            // Direct query with emphasis on literal citation
+            String query = "Problema do cliente: \"" + searchContext + "\"\n\n" +
+                    "Busque no arquivo CLASS_documentation_data_part1.txt e retorne a linha LITERAL (cópia exata) que melhor classifica este problema.";
+
+            String aiResponse = googleFileSearchService.simpleSearch(query, systemInstruction);
 
             org.springframework.ai.document.Document resultDoc = new org.springframework.ai.document.Document(
                     aiResponse,
@@ -260,6 +271,34 @@ public class GeminiService {
             String resp = googleFileSearchService.simpleSearch("Responda com base na documentação: " + query);
             docs.add(new org.springframework.ai.document.Document(resp));
         } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return docs;
+    }
+
+    /**
+     * Busca documentação oficial com filtro de categoria
+     * 
+     * @param query     Consulta de busca
+     * @param categoria Categoria para filtrar (ex: "manuais", "nfe", "cte", etc.)
+     * @return Lista de documentos filtrados pela categoria
+     */
+    public List<org.springframework.ai.document.Document> buscarDocumentacaoOficialSmart(String query,
+            String categoria) {
+        List<org.springframework.ai.document.Document> docs = new java.util.ArrayList<>();
+        try {
+            // Adiciona instrução de filtro por categoria na busca
+            String filteredQuery = "Responda com base na documentação da categoria '" + categoria + "': " + query;
+            String resp = googleFileSearchService.simpleSearch(filteredQuery);
+
+            // Cria documento com metadata incluindo a categoria
+            Map<String, Object> metadata = Map.of(
+                    "tipo", "documentacao_oficial",
+                    "categoria", categoria,
+                    "query", query);
+            docs.add(new org.springframework.ai.document.Document(resp, metadata));
+        } catch (Exception e) {
+            System.err.println("❌ Erro ao buscar documentação com filtro de categoria: " + e.getMessage());
             e.printStackTrace();
         }
         return docs;
