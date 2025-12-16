@@ -122,16 +122,41 @@ public class GeminiService {
             Escreva **tudo em primeira pessoa**, como se **eu**, técnico, estivesse fazendo o summary.
             O resultado deve ser explicito, contextual e seguir *exatamente* o formato abaixo:
 
-            **PROBLEMA / DÚVIDA:** [Descreva em UMA frase, curta porém completa, qual foi o problema ou dúvida principal do cliente. 
-            Inclua um contexto mínimo que ajude a entender a situação (ex.: operação que ele tentava fazer, etapa em que o erro ocorreu ou o que estava impedindo a continuação). 
-            Use informações críticas somente quando forem realmente necessárias para compreensão do problema.]
+            **PROBLEMA / DÚVIDA:** [Descreva um resposta que deve SEMPRE ser apenas UMA frase curta, objetiva, com contexto mínimo, mas 
+            suficiente para entender o problema real enfrentado pelo cliente. A frase deve deixar claro que se trata 
+            de um erro, dúvida, rejeição, falha ou bloqueio. Não invente nada que não esteja na conversa. 
+            Identifique o que o cliente estava tentando fazer (somente se isso ajudar a entender o problema), 
+            o problema encontrado (erro/dúvida/rejeição/falha), e o que foi impedido por esse problema (opcional). 
+            A frase deve seguir a lógica: "O cliente [tentou fazer X] e enfrentou [erro/dúvida/rejeição Y], 
+            impedindo [resultado esperado]." Use apenas os trechos necessários. Restrições obrigatórias: 
+            não use detalhes irrelevantes como IDs, dados longos, prints ou códigos extensos; não descreva a solução; 
+            não escreva mais de uma frase; não interprete causas profundas que não estejam claramente descritas; 
+            mantenha conciso (~20 palavras). Em caso de atendimento incompleto, ilegível ou sem problema claro, 
+            use este fallback: 'O cliente apresentou uma dúvida ou problema, mas o atendimento não fornece detalhes 
+            suficientes para identificá-lo.' Se houver múltiplos problemas, selecione apenas o principal.]
 
-            **SOLUÇÃO APRESENTADA:** [Descreva, em primeira pessoa, de forma clara e assertiva, tudo o que eu fiz para resolver o problema. 
-            Explique o raciocínio, os passos tomados, verificações realizadas e ajustes aplicados, sempre de forma objetiva e com a resolução final. 
-            Se houver documentos fiscais citados — como NF, NFe, Nota, Cupom, CT, CT-e, MDF-e, NFC-e — identifique todos e padronize sempre como: número doc: X. 
-            Ignore totalmente números que sejam identificadores de AnyDesk. 
-            Considere como AnyDesk qualquer sequência numérica com mais de 5 dígitos que não esteja claramente vinculada a um documento fiscal. 
-            Não utilize esses números no summary e não os interprete.
+            **SOLUÇÃO APRESENTADA:** [A resposta deve SEMPRE ser escrita em primeira pessoa, de forma clara,
+             assertiva, objetiva e totalmente fiel ao que ocorreu no atendimento, descrevendo exatamente o que
+             eu fiz, incluindo raciocínio, verificações, testes, conferências, orientações, análises, ajustes,
+             validações e, quando aplicável, a resolução final. A solução deve refletir precisamente o fluxo
+             do atendimento, sem supor ações que não ocorreram. Sempre identificar documentos fiscais citados
+             (NF, NFe, Nota, Cupom, CT, CT-e, MDF-e, NFC-e), padronizando como: “número doc: X”, extraindo 
+             todos os números de documentos fiscais mesmo que citados informalmente. Ignore completamente
+             qualquer sequência numérica maior que 5 dígitos que não esteja claramente vinculada a documentos
+             fiscais, considerando todas como possíveis IDs de AnyDesk, e nunca inclua ou interprete esses
+             números no texto. Se o atendimento foi resolvido, descreva tudo o que eu fiz até a solução. 
+             Se não foi concluído ou a solução depende de ação futura, descreva claramente que o processo
+             ficou pendente e o motivo. Se o atendimento ficou em agendamento, identifique explicitamente que a
+             solução não foi aplicada no momento, capture a data e/ou horário citados e registre que agendei
+             retorno para dar continuidade, sem inventar datas. Se o cliente não pôde prosseguir, estava sem
+             acesso ou dependia de terceiros, descreva a limitação e o combinado para continuidade. Se nada foi
+             resolvido ainda, explique o que eu tentei, o que foi diagnosticado e por que não foi finalizado. 
+             Se houve apenas orientação, registre apenas o que foi explicado. Não invente procedimentos, números
+             ou verificações; não descreva ações não realizadas; não utilize prints, gírias ou transcrições 
+             desnecessárias; e não resuma falas do cliente, apenas minhas ações. Em caso de atendimento vazio, 
+             ilegível ou sem dados suficientes para identificar minhas ações, use o fallback: 
+             “Não consegui identificar as ações realizadas no atendimento devido à falta de informações claras.” 
+             Ao final, retorne SOMENTE o texto da solução apresentada.]
 
             **OPORTUNIDADE DE UPSELL:** [Responda apenas 'SIM' ou 'NÃO'. 'SIM' somente se houve oportunidade real de VENDA de produto ou serviço. 
             Elogios, avaliações ou conversas neutras NUNCA contam. Se responder 'SIM', descreva o contexto e informe se a venda foi concluída, não concluída ou se ficou em andamento. 
@@ -139,7 +164,7 @@ public class GeminiService {
 
             **PRINTS DE ERRO OU DE MENSAGENS RELEVANTES:** [Responda apenas 'Sim' ou 'Não'.]
 
-            **HUMOR DO CLIENTE:** [Informe em UMA palavra: 'BOM', 'NEUTRO' e 'IRRITADO'.]
+            **HUMOR DO CLIENTE:** [Informe em UMA palavra: 'BOM.', 'NEUTRO.' e 'IRRITADO.'.]
 
             **MÓDULO:** [Selecione APENAS UMA categoria abaixo, escolhendo aquela que melhor representa o tema central do atendimento. 
             Analise o contexto e identifique sobre qual módulo o cliente realmente estava falando. 
