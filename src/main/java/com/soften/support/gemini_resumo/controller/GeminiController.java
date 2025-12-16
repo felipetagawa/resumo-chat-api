@@ -45,7 +45,7 @@ public class GeminiController {
             return ResponseEntity.ok(Map.of("summary", summary));
         } catch (RuntimeException e) {
             return ResponseEntity
-                    .status(HttpStatus.BAD_GATEWAY) // erro na chamada externa (Gemini)
+                    .status(HttpStatus.BAD_GATEWAY)
                     .body(Map.of("erro", e.getMessage()));
         }
     }

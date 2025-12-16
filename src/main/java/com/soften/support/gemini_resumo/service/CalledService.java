@@ -45,8 +45,13 @@ public class CalledService {
 
     public TipResponseDto processFullTip(String textCalled) {
         try {
+            System.out.println("=== INICIANDO PROCESSAMENTO DE DICA ===");
+
             SummaryDto summaryDto = generateSummaryWithoutSaving(textCalled);
             FormatSummary formatSummary = summaryDto.formatSummary();
+
+            System.out.println("Problema atual: " + formatSummary.problem());
+            System.out.println("Módulo atual: " + formatSummary.modules());
 
             List<ModulesCalled> SearchModules = new ArrayList<>();
             if (formatSummary.modules() != null) {
@@ -54,10 +59,21 @@ public class CalledService {
             }
             SearchModules.add(ModulesCalled.GENERIC);
 
+            System.out.println("Buscando chamados nos módulos: " + SearchModules);
             List<CalledEntity> relatedCalls = calledRepository.findByModulesCalledIn(SearchModules);
+            System.out.println("Chamados relacionados encontrados: " + relatedCalls.size());
 
-            if (relatedCalls.isEmpty()) {
-                return createResponseWithoutHistory(summaryDto);
+            if (!relatedCalls.isEmpty()) {
+                System.out.println("=== CHAMADOS ENCONTRADOS ===");
+                for (int i = 0; i < Math.min(5, relatedCalls.size()); i++) {
+                    CalledEntity call = relatedCalls.get(i);
+                    System.out.println("ID: " + call.getId());
+                    System.out.println("Problema: " + call.getProblem());
+                    System.out.println("Solução: " + (call.getSolution() != null ?
+                            call.getSolution().substring(0, Math.min(50, call.getSolution().length())) : "NULL"));
+                    System.out.println("Módulo: " + call.getModulesCalled());
+                    System.out.println("---");
+                }
             }
 
             List<CalledEntity> filteredCalls = suggestionService.filterCallsBySimilarity(
@@ -65,7 +81,21 @@ public class CalledService {
                     formatSummary.problem()
             );
 
+            System.out.println("Chamados filtrados por similaridade: " + filteredCalls.size());
+
+            if (!filteredCalls.isEmpty()) {
+                System.out.println("=== CHAMADOS SIMILARES ENCONTRADOS ===");
+                for (CalledEntity call : filteredCalls) {
+                    System.out.println("ID Similar: " + call.getId());
+                    System.out.println("Problema Similar: " + call.getProblem());
+                    System.out.println("Solução Similar: " + (call.getSolution() != null ?
+                            call.getSolution().substring(0, Math.min(100, call.getSolution().length())) : "VAZIA/NULL"));
+                    System.out.println("---");
+                }
+            }
+
             if (filteredCalls.isEmpty()) {
+                System.out.println("Nenhum chamado similar encontrado!");
                 return createResponseWithHistoryWithoutSimilarity(summaryDto, relatedCalls.size());
             }
 
@@ -74,7 +104,28 @@ public class CalledService {
                     .filter(StringUtils::hasText)
                     .collect(Collectors.toList());
 
+            System.out.println("Soluções extraídas: " + solutions.size());
+
+            if (!solutions.isEmpty()) {
+                System.out.println("=== SOLUÇÕES EXTRAÍDAS ===");
+                for (int i = 0; i < solutions.size(); i++) {
+                    System.out.println("Solução " + (i+1) + ": " +
+                            solutions.get(i).substring(0, Math.min(80, solutions.get(i).length())) + "...");
+                }
+            } else {
+                System.out.println("ATENÇÃO: Nenhuma solução com texto encontrada!");
+                System.out.println("Total de chamados filtrados: " + filteredCalls.size());
+
+                for (CalledEntity call : filteredCalls) {
+                    String sol = call.getSolution();
+                    System.out.println("Chamado ID " + call.getId() + " - Solução: " +
+                            (sol == null ? "NULL" : sol.isEmpty() ? "VAZIA" : "Tem " + sol.length() + " caracteres"));
+                }
+            }
+
             List<String> tips = suggestionService.generateResolutionTipsList(solutions, formatSummary.problem());
+
+            System.out.println("Dicas geradas: " + tips.size());
 
             return TipResponseDto.builder()
                     .summary(summaryDto)
@@ -88,6 +139,8 @@ public class CalledService {
                     .build();
 
         } catch (Exception e) {
+            System.err.println("ERRO no processFullTip: " + e.getMessage());
+            e.printStackTrace();
             return createErrorResponse(e);
         }
     }
