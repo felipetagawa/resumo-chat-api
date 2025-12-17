@@ -31,9 +31,11 @@ public class CalledEntity {
     @Enumerated(EnumType.STRING)
     ModulesCalled modulesCalled;
 
-    public CalledEntity() {}
+    public CalledEntity() {
+    }
 
-    public CalledEntity(UUID id, String problem, String solution, String upsell, boolean prints, MoodClient moodClient, ModulesCalled modulesCalled) {
+    public CalledEntity(UUID id, String problem, String solution, String upsell, boolean prints, MoodClient moodClient,
+            ModulesCalled modulesCalled) {
         this.id = id;
         this.problem = problem;
         this.solution = solution;
@@ -42,6 +44,61 @@ public class CalledEntity {
         this.moodClient = moodClient;
         this.modulesCalled = modulesCalled;
     }
+
+    // Manual Getters and Setters to avoid Lombok issues during build
+    public UUID getId() {
+        return id;
+    }
+
+    public void setId(UUID id) {
+        this.id = id;
+    }
+
+    public String getProblem() {
+        return problem;
+    }
+
+    public void setProblem(String problem) {
+        this.problem = problem;
+    }
+
+    public String getSolution() {
+        return solution;
+    }
+
+    public void setSolution(String solution) {
+        this.solution = solution;
+    }
+
+    public String getUpsell() {
+        return upsell;
+    }
+
+    public void setUpsell(String upsell) {
+        this.upsell = upsell;
+    }
+
+    public boolean isPrints() {
+        return prints;
+    }
+
+    public void setPrints(boolean prints) {
+        this.prints = prints;
+    }
+
+    public MoodClient getMoodClient() {
+        return moodClient;
+    }
+
+    public void setMoodClient(MoodClient moodClient) {
+        this.moodClient = moodClient;
+    }
+
+    public ModulesCalled getModulesCalled() {
+        return modulesCalled;
+    }
+
+    public void setModulesCalled(ModulesCalled modulesCalled) {
+        this.modulesCalled = modulesCalled;
+    }
 }
-
-
