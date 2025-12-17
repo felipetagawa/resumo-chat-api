@@ -24,29 +24,59 @@ public class DocumentationController {
     @PostMapping(consumes = org.springframework.http.MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<?> addDocumentation(
             @RequestParam("file") org.springframework.web.multipart.MultipartFile file,
-            @RequestParam(value = "categoria", defaultValue = "GERAL") String categoria) {
+            @RequestParam(value = "categoria", required = false) String categoria,
+            @RequestParam(value = "modulo", required = false) String modulo,
+            @RequestParam(value = "tags", required = false) String tags,
+            @RequestParam(value = "descricao", required = false) String descricao) {
 
         if (file.isEmpty()) {
             return ResponseEntity.badRequest().body("File is required");
         }
 
         try {
-            // Upload to Google File Search
             String originalFilename = file.getOriginalFilename();
             String contentType = file.getContentType();
 
-            // Fallback for nulls
             if (originalFilename == null)
                 originalFilename = "document";
             if (contentType == null)
                 contentType = "application/octet-stream";
 
-            String resultName = googleFileSearchService.uploadFile(originalFilename, file.getBytes(), contentType);
+            // Prepara metadados customizados
+            java.util.Map<String, String> customMetadata = new java.util.HashMap<>();
+
+            if (categoria != null && !categoria.isBlank()) {
+                customMetadata.put("categoria", categoria);
+            }
+            if (modulo != null && !modulo.isBlank()) {
+                customMetadata.put("modulo", modulo);
+            }
+            if (tags != null && !tags.isBlank()) {
+                customMetadata.put("tags", tags);
+            }
+            if (descricao != null && !descricao.isBlank()) {
+                customMetadata.put("descricao", descricao);
+            }
+
+            // Upload com metadados se fornecidos, senão upload simples
+            String resultName;
+            if (!customMetadata.isEmpty()) {
+                resultName = googleFileSearchService.uploadFileWithMetadata(
+                        originalFilename,
+                        file.getBytes(),
+                        contentType,
+                        customMetadata);
+            } else {
+                resultName = googleFileSearchService.uploadFile(
+                        originalFilename,
+                        file.getBytes(),
+                        contentType);
+            }
 
             return ResponseEntity.ok(Map.of(
                     "message", "File uploaded to Google File Search",
                     "id", resultName,
-                    "categoria", categoria));
+                    "metadata", customMetadata.isEmpty() ? "Nenhum metadata fornecido" : customMetadata));
         } catch (Exception e) {
             return ResponseEntity.internalServerError().body("Error uploading to Google: " + e.getMessage());
         }
@@ -80,12 +110,72 @@ public class DocumentationController {
     public ResponseEntity<?> listAllFiles() {
         try {
             var files = googleFileSearchService.listAllFiles();
+
+            // Adiciona informações do store para contexto
+            org.json.JSONObject storeInfo = googleFileSearchService.getStoreInfo();
+            int documentsInStore = storeInfo != null ? storeInfo.optInt("activeDocumentsCount", 0) : 0;
+
             return ResponseEntity.ok(Map.of(
-                    "totalFiles", files.size(),
-                    "files", files));
+                    "warning",
+                    "Este endpoint lista arquivos da Files API (upload simples), não documentos do FileSearchStore",
+                    "suggestion", "Use GET /api/docs/store-info para ver informações dos documentos no FileSearchStore",
+                    "filesApiCount", files.size(),
+                    "filesApiList", files,
+                    "fileSearchStoreDocuments", documentsInStore,
+                    "note",
+                    "Você tem " + documentsInStore + " documentos ativos no FileSearchStore que não aparecem aqui"));
         } catch (Exception e) {
             return ResponseEntity.internalServerError()
                     .body(Map.of("error", "Erro ao listar arquivos: " + e.getMessage()));
+        }
+    }
+
+    @GetMapping("/store-info")
+    public ResponseEntity<?> getStoreInfo() {
+        try {
+            org.json.JSONObject storeInfo = googleFileSearchService.getStoreInfo();
+
+            if (storeInfo == null) {
+                return ResponseEntity.internalServerError()
+                        .body(Map.of("error", "Não foi possível obter informações do store"));
+            }
+
+            // Converte JSONObject para Map para retornar como JSON
+            Map<String, Object> response = new java.util.HashMap<>();
+            response.put("name", storeInfo.optString("name", "N/A"));
+            response.put("displayName", storeInfo.optString("displayName", "N/A"));
+            response.put("activeDocumentsCount", storeInfo.optInt("activeDocumentsCount", 0));
+            response.put("pendingDocumentsCount", storeInfo.optInt("pendingDocumentsCount", 0));
+            response.put("failedDocumentsCount", storeInfo.optInt("failedDocumentsCount", 0));
+            response.put("sizeBytes", storeInfo.optLong("sizeBytes", 0));
+            response.put("createTime", storeInfo.optString("createTime", "N/A"));
+            response.put("updateTime", storeInfo.optString("updateTime", "N/A"));
+
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError()
+                    .body(Map.of("error", "Erro ao obter informações do store: " + e.getMessage()));
+        }
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<?> deleteFile(@PathVariable String id) {
+        boolean deleted = googleFileSearchService.deleteFile(id);
+        if (deleted) {
+            return ResponseEntity.ok(Map.of("message", "File deleted successfully"));
+        } else {
+            return ResponseEntity.internalServerError().body("Failed to delete file");
+        }
+    }
+
+    @DeleteMapping("/reset")
+    public ResponseEntity<?> resetStore() {
+        boolean deleted = googleFileSearchService.deleteStore();
+        if (deleted) {
+            return ResponseEntity
+                    .ok(Map.of("message", "File Search Store deleted. A new one will be created on next upload."));
+        } else {
+            return ResponseEntity.internalServerError().body("Failed to delete store (maybe it doesn't exist?)");
         }
     }
 }
