@@ -58,16 +58,16 @@ public class DocumentationController {
                 customMetadata.put("descricao", descricao);
             }
 
-            // Upload com metadados se fornecidos, senão upload simples
+            // Padrão: Upload para o store de MANUAIS
             String resultName;
             if (!customMetadata.isEmpty()) {
-                resultName = googleFileSearchService.uploadFileWithMetadata(
+                resultName = googleFileSearchService.uploadFileWithMetadataToManuals(
                         originalFilename,
                         file.getBytes(),
                         contentType,
                         customMetadata);
             } else {
-                resultName = googleFileSearchService.uploadFile(
+                resultName = googleFileSearchService.uploadFileToManuals(
                         originalFilename,
                         file.getBytes(),
                         contentType);
@@ -82,13 +82,71 @@ public class DocumentationController {
         }
     }
 
-    // Deletion is temporarily disabled as we moved to Google File Search
-    // @DeleteMapping("/{id}")
-    // public ResponseEntity<?> deleteDocumentation(@PathVariable String id) {
-    // vectorStore.delete(List.of(id));
-    // return ResponseEntity.ok(Map.of("message", "Documentation deleted (if it
-    // existed)"));
-    // }
+    /**
+     * Upload de arquivos para o Classification Store (frases de classificação).
+     * Endpoint dedicado para separar uploads de classificação dos manuais.
+     */
+    @PostMapping(value = "/classification", consumes = org.springframework.http.MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<?> addClassification(
+            @RequestParam("file") org.springframework.web.multipart.MultipartFile file,
+            @RequestParam(value = "categoria", required = false) String categoria,
+            @RequestParam(value = "modulo", required = false) String modulo,
+            @RequestParam(value = "tags", required = false) String tags,
+            @RequestParam(value = "descricao", required = false) String descricao) {
+
+        if (file.isEmpty()) {
+            return ResponseEntity.badRequest().body("File is required");
+        }
+
+        try {
+            String originalFilename = file.getOriginalFilename();
+            String contentType = file.getContentType();
+
+            if (originalFilename == null)
+                originalFilename = "classification_document";
+            if (contentType == null)
+                contentType = "application/octet-stream";
+
+            // Adiciona prefixo CLASS_ para identificar arquivos de classificação
+            String displayName = originalFilename.startsWith("CLASS_")
+                    ? originalFilename
+                    : "CLASS_" + originalFilename;
+
+            // Prepara metadados customizados
+            java.util.Map<String, String> customMetadata = new java.util.HashMap<>();
+            customMetadata.put("tipo", "classification"); // Marca como arquivo de classificação
+
+            if (categoria != null && !categoria.isBlank()) {
+                customMetadata.put("categoria", categoria);
+            }
+            if (modulo != null && !modulo.isBlank()) {
+                customMetadata.put("modulo", modulo);
+            }
+            if (tags != null && !tags.isBlank()) {
+                customMetadata.put("tags", tags);
+            }
+            if (descricao != null && !descricao.isBlank()) {
+                customMetadata.put("descricao", descricao);
+            }
+
+            // Upload para o Classification Store
+            String resultName = googleFileSearchService.uploadFileWithMetadataToClassification(
+                    displayName,
+                    file.getBytes(),
+                    contentType,
+                    customMetadata);
+
+            return ResponseEntity.ok(Map.of(
+                    "message", "File uploaded to Classification Store",
+                    "store", "ResumoChat_Classification_v2",
+                    "id", resultName,
+                    "displayName", displayName,
+                    "metadata", customMetadata));
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError()
+                    .body("Error uploading to Classification Store: " + e.getMessage());
+        }
+    }
 
     @GetMapping("/search")
     public ResponseEntity<?> searchDocumentation(
@@ -109,21 +167,14 @@ public class DocumentationController {
     @GetMapping("/list")
     public ResponseEntity<?> listAllFiles() {
         try {
-            var files = googleFileSearchService.listAllFiles();
-
-            // Adiciona informações do store para contexto
-            org.json.JSONObject storeInfo = googleFileSearchService.getStoreInfo();
-            int documentsInStore = storeInfo != null ? storeInfo.optInt("activeDocumentsCount", 0) : 0;
+            var classFiles = googleFileSearchService.listClassificationFiles();
+            var manualFiles = googleFileSearchService.listFiles(googleFileSearchService.getManualsStoreId());
 
             return ResponseEntity.ok(Map.of(
-                    "warning",
-                    "Este endpoint lista arquivos da Files API (upload simples), não documentos do FileSearchStore",
-                    "suggestion", "Use GET /api/docs/store-info para ver informações dos documentos no FileSearchStore",
-                    "filesApiCount", files.size(),
-                    "filesApiList", files,
-                    "fileSearchStoreDocuments", documentsInStore,
-                    "note",
-                    "Você tem " + documentsInStore + " documentos ativos no FileSearchStore que não aparecem aqui"));
+                    "classificationStore", classFiles,
+                    "manualsStore", manualFiles,
+                    "classificationCount", classFiles.size(),
+                    "manualsCount", manualFiles.size()));
         } catch (Exception e) {
             return ResponseEntity.internalServerError()
                     .body(Map.of("error", "Erro ao listar arquivos: " + e.getMessage()));
@@ -133,25 +184,14 @@ public class DocumentationController {
     @GetMapping("/store-info")
     public ResponseEntity<?> getStoreInfo() {
         try {
-            org.json.JSONObject storeInfo = googleFileSearchService.getStoreInfo();
+            org.json.JSONObject classInfo = googleFileSearchService
+                    .getStoreInfo(googleFileSearchService.getClassificationStoreId());
+            org.json.JSONObject manualInfo = googleFileSearchService
+                    .getStoreInfo(googleFileSearchService.getManualsStoreId());
 
-            if (storeInfo == null) {
-                return ResponseEntity.internalServerError()
-                        .body(Map.of("error", "Não foi possível obter informações do store"));
-            }
-
-            // Converte JSONObject para Map para retornar como JSON
-            Map<String, Object> response = new java.util.HashMap<>();
-            response.put("name", storeInfo.optString("name", "N/A"));
-            response.put("displayName", storeInfo.optString("displayName", "N/A"));
-            response.put("activeDocumentsCount", storeInfo.optInt("activeDocumentsCount", 0));
-            response.put("pendingDocumentsCount", storeInfo.optInt("pendingDocumentsCount", 0));
-            response.put("failedDocumentsCount", storeInfo.optInt("failedDocumentsCount", 0));
-            response.put("sizeBytes", storeInfo.optLong("sizeBytes", 0));
-            response.put("createTime", storeInfo.optString("createTime", "N/A"));
-            response.put("updateTime", storeInfo.optString("updateTime", "N/A"));
-
-            return ResponseEntity.ok(response);
+            return ResponseEntity.ok(Map.of(
+                    "classificationStore", classInfo != null ? classInfo.toMap() : "Not found",
+                    "manualsStore", manualInfo != null ? manualInfo.toMap() : "Not found"));
         } catch (Exception e) {
             return ResponseEntity.internalServerError()
                     .body(Map.of("error", "Erro ao obter informações do store: " + e.getMessage()));
@@ -168,14 +208,26 @@ public class DocumentationController {
         }
     }
 
-    @DeleteMapping("/reset")
+    @PostMapping("/reset")
     public ResponseEntity<?> resetStore() {
-        boolean deleted = googleFileSearchService.deleteStore();
-        if (deleted) {
-            return ResponseEntity
-                    .ok(Map.of("message", "File Search Store deleted. A new one will be created on next upload."));
-        } else {
-            return ResponseEntity.internalServerError().body("Failed to delete store (maybe it doesn't exist?)");
+        try {
+            System.out.println("⚠️ Recebido comando de RESET de base via API");
+            boolean deleted = googleFileSearchService.deleteStores();
+            if (deleted) {
+                return ResponseEntity.ok(Map.of(
+                        "status", "success",
+                        "message", "All File Search Stores deleted. Please RESTART the application to recreate them.",
+                        "note", "A reinicialização é necessária para que o @PostConstruct recrie os IDs."));
+            } else {
+                return ResponseEntity.ok(Map.of(
+                        "status", "partial_success",
+                        "message", "Nenhum store foi encontrado ou deletado (talvez já estivessem vazios)."));
+            }
+        } catch (Exception e) {
+            System.err.println("❌ Erro no reset: " + e.getMessage());
+            return ResponseEntity.internalServerError().body(Map.of(
+                    "status", "error",
+                    "message", e.getMessage()));
         }
     }
 }

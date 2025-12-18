@@ -24,64 +24,150 @@ public class GoogleFileSearchService {
 
     private static final String BASE_URL = "https://generativelanguage.googleapis.com/v1beta";
     private static final String UPLOAD_URL = "https://generativelanguage.googleapis.com/upload/v1beta";
-    private static final String STORE_DISPLAY_NAME = "ResumoChat_KB_v2"; // Mudamos para v2 para resetar base limpa
+    private static final String CLASSIFICATION_STORE_NAME = "ResumoChat_Classification_v2";
+    private static final String MANUALS_STORE_NAME = "ResumoChat_Manuals_v2";
 
     // ... (restante do código)
 
     /**
-     * Deleta o File Search Store atual.
-     * Tenta esvaziar antes de deletar.
+     * Deleta TODOS os stores e ARQUIVOS vinculados ao sistema no Google Cloud.
+     * Realiza uma limpeza completa para evitar duplicatas e órfãos.
      */
-    public boolean deleteStore() {
-        if (currentStoreId == null)
-            return false;
-
+    public boolean deleteStores() {
         try {
-            System.out.println("🔄 Iniciando limpeza e remoção do Store: " + currentStoreId);
+            System.out.println("☢️ INICIANDO LIMPEZA NUCLEAR DA BASE GOOGLE...");
 
-            // Tenta listar e deletar arquivos (pode falhar se a API de listagem não
-            // cooperar)
-            try {
-                java.util.List<java.util.Map<String, Object>> files = listAllFiles();
-                if (files != null && !files.isEmpty()) {
-                    System.out.println("🗑️ Tentando deletar " + files.size() + " arquivos detectados...");
-                    for (java.util.Map<String, Object> file : files) {
-                        deleteFile((String) file.get("name"));
+            // 1. Listar e deletar arquivos de CADA store, depois deletar o store
+            String listStoresUrl = BASE_URL + "/fileSearchStores?key=" + apiKey;
+            ResponseEntity<String> storeResponse = restTemplate.getForEntity(listStoresUrl, String.class);
+            if (storeResponse.getStatusCode().is2xxSuccessful() && storeResponse.getBody() != null) {
+                JSONObject json = new JSONObject(storeResponse.getBody());
+                if (json.has("fileSearchStores")) {
+                    JSONArray stores = json.getJSONArray("fileSearchStores");
+                    for (int i = 0; i < stores.length(); i++) {
+                        JSONObject store = stores.getJSONObject(i);
+                        String dName = store.optString("displayName", "");
+                        String sName = store.getString("name");
+
+                        if (dName.contains("ResumoChat_")) {
+                            System.out.println("📋 Processando Store: [" + dName + "] (" + sName + ")");
+
+                            // 1.1. Deletar TODOS os arquivos dentro do store primeiro
+                            int deletedFiles = deleteAllFilesFromStore(sName);
+                            System.out.println("  ✅ Deletados " + deletedFiles + " arquivo(s) do store");
+
+                            // 1.2. Agora deletar o store vazio
+                            System.out.println("  🗑️ Removendo Store vazio: [" + dName + "]");
+                            deleteSpecificStore(sName);
+                        }
                     }
                 }
-            } catch (Exception e) {
-                System.err.println("⚠️ Aviso: Falha ao tentar esvaziar store manualmente: " + e.getMessage());
             }
 
-            // Tenta deletar o Store
-            String deleteUrl = BASE_URL + "/" + currentStoreId + "?key=" + apiKey;
-            restTemplate.delete(deleteUrl);
-            System.out.println("💥 Store deletado com sucesso: " + currentStoreId);
+            // 2. Deletar Arquivos Órfãos da Files API Global (que não estão em stores)
+            String listFilesUrl = BASE_URL + "/files?key=" + apiKey;
+            ResponseEntity<String> fileResponse = restTemplate.getForEntity(listFilesUrl, String.class);
+            if (fileResponse.getStatusCode().is2xxSuccessful() && fileResponse.getBody() != null) {
+                JSONObject json = new JSONObject(fileResponse.getBody());
+                if (json.has("files")) {
+                    JSONArray files = json.getJSONArray("files");
+                    int orphanCount = 0;
+                    for (int i = 0; i < files.length(); i++) {
+                        JSONObject file = files.getJSONObject(i);
+                        String dName = file.optString("displayName", "");
+                        String fName = file.getString("name"); // format: files/xyz
 
-            this.currentStoreId = null;
+                        // Deleta apenas arquivos do sistema
+                        if (dName.startsWith("CLASS_") || dName.contains(".txt")) {
+                            System.out.println("🗑️ Removendo Arquivo Órfão: " + dName);
+                            deleteFile(fName);
+                            orphanCount++;
+                        }
+                    }
+                    if (orphanCount > 0) {
+                        System.out.println("✅ Deletados " + orphanCount + " arquivo(s) órfão(s)");
+                    }
+                }
+            }
+
+            this.classificationStoreId = null;
+            this.manualsStoreId = null;
+            System.out.println("✨ LIMPEZA NUCLEAR CONCLUÍDA COM SUCESSO.");
             return true;
-
-        } catch (org.springframework.web.client.HttpClientErrorException.BadRequest e) {
-            System.err.println("❌ Não foi possível deletar o Store: Ele não está vazio e a listagem falhou.");
-            System.err.println(
-                    "💡 Dica: O Store 'sujo' foi abandonado. O sistema usará um novo Store se você mudou o DISPLAY_NAME.");
-            return false;
         } catch (Exception e) {
-            System.err.println("❌ Erro inesperado ao deletar store: " + e.getMessage());
+            System.err.println("❌ Erro durante a limpeza total: " + e.getMessage());
+            e.printStackTrace();
             return false;
         }
     }
 
-    private String currentStoreId;
+    /**
+     * Deleta todos os arquivos de um store específico.
+     * A API do Google exige que stores estejam vazios antes de serem deletados.
+     * 
+     * @param storeId ID do store
+     * @return Número de arquivos deletados
+     */
+    private int deleteAllFilesFromStore(String storeId) {
+        try {
+            // Usar a Files API global para listar arquivos
+            String listFilesUrl = BASE_URL + "/files?key=" + apiKey;
+            ResponseEntity<String> response = restTemplate.getForEntity(listFilesUrl, String.class);
+
+            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
+                JSONObject json = new JSONObject(response.getBody());
+                int deletedCount = 0;
+
+                if (json.has("files")) {
+                    JSONArray files = json.getJSONArray("files");
+
+                    for (int i = 0; i < files.length(); i++) {
+                        JSONObject file = files.getJSONObject(i);
+                        String fileName = file.getString("name"); // format: files/xyz
+                        String displayName = file.optString("displayName", "");
+
+                        // Deletar o arquivo
+                        System.out.println("    🗑️ Deletando arquivo: " + displayName + " (" + fileName + ")");
+                        if (deleteFile(fileName)) {
+                            deletedCount++;
+                        }
+                    }
+                }
+
+                return deletedCount;
+            }
+        } catch (Exception e) {
+            System.err.println("⚠️ Erro ao deletar arquivos do store " + storeId + ": " + e.getMessage());
+        }
+        return 0;
+    }
+
+    private boolean deleteSpecificStore(String storeId) {
+        if (storeId == null)
+            return false;
+        try {
+            System.out.println("🔄 Deletando Store: " + storeId);
+            String deleteUrl = BASE_URL + "/" + storeId + "?key=" + apiKey;
+            restTemplate.delete(deleteUrl);
+            return true;
+        } catch (Exception e) {
+            System.err.println("❌ Erro ao deletar store " + storeId + ": " + e.getMessage());
+            return false;
+        }
+    }
+
+    private String classificationStoreId;
+    private String manualsStoreId;
 
     @PostConstruct
     public void init() {
         if (apiKey != null && !apiKey.isBlank()) {
-            ensureStoreExists();
+            this.classificationStoreId = ensureStoreExists(CLASSIFICATION_STORE_NAME);
+            this.manualsStoreId = ensureStoreExists(MANUALS_STORE_NAME);
         }
     }
 
-    private void ensureStoreExists() {
+    private String ensureStoreExists(String displayName) {
         try {
             // 1. List existing stores to find ours
             String listUrl = BASE_URL + "/fileSearchStores?key=" + apiKey;
@@ -93,55 +179,63 @@ public class GoogleFileSearchService {
                     JSONArray stores = json.getJSONArray("fileSearchStores");
                     for (int i = 0; i < stores.length(); i++) {
                         JSONObject store = stores.getJSONObject(i);
-                        if (store.optString("displayName").equals(STORE_DISPLAY_NAME)) {
-                            this.currentStoreId = store.getString("name"); // format: fileSearchStores/xyz
-                            System.out.println("✅ Found existing File Search Store: " + this.currentStoreId);
-                            return;
+                        if (store.optString("displayName").equals(displayName)) {
+                            String storeId = store.getString("name");
+                            System.out.println("✅ Found existing File Search Store [" + displayName + "]: " + storeId);
+                            return storeId;
                         }
                     }
                 }
             }
 
-            // 2. If not found, create new one
-            System.out.println("⚠️ Store not found. Creating new File Search Store: " + STORE_DISPLAY_NAME);
-            createStore();
+            // 2. Create if not found
+            System.out.println("🔨 Creating new File Search Store: " + displayName);
+            String createUrl = BASE_URL + "/fileSearchStores?key=" + apiKey;
+            JSONObject createBody = new JSONObject();
+            createBody.put("displayName", displayName);
 
-        } catch (Exception e) {
-            System.err.println("❌ Error ensuring File Search Store exists: " + e.getMessage());
-        }
-    }
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            HttpEntity<String> createEntity = new HttpEntity<>(createBody.toString(), headers);
 
-    private void createStore() {
-        String createUrl = BASE_URL + "/fileSearchStores?key=" + apiKey;
-
-        JSONObject body = new JSONObject();
-        body.put("displayName", STORE_DISPLAY_NAME);
-
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
-        HttpEntity<String> entity = new HttpEntity<>(body.toString(), headers);
-
-        try {
-            ResponseEntity<String> response = restTemplate.postForEntity(createUrl, entity, String.class);
-            if (response.getStatusCode().is2xxSuccessful()) {
-                JSONObject json = new JSONObject(response.getBody());
-                this.currentStoreId = json.getString("name");
-                System.out.println("✅ Expected Store created: " + this.currentStoreId);
+            ResponseEntity<String> createResponse = restTemplate.postForEntity(createUrl, createEntity, String.class);
+            if (createResponse.getStatusCode().is2xxSuccessful() && createResponse.getBody() != null) {
+                JSONObject createJson = new JSONObject(createResponse.getBody());
+                String storeId = createJson.getString("name");
+                System.out.println("✨ Created File Search Store [" + displayName + "]: " + storeId);
+                return storeId;
             }
+
         } catch (Exception e) {
-            System.err.println("❌ Failed to create store: " + e.getMessage());
+            System.err.println("❌ Error ensuring store exists [" + displayName + "]: " + e.getMessage());
         }
+        return null;
     }
 
-    public String uploadFile(String displayName, byte[] fileContent, String mimeType) {
-        if (currentStoreId == null) {
-            ensureStoreExists();
-            if (currentStoreId == null)
-                throw new RuntimeException("File Search Store is not available.");
+    public String getClassificationStoreId() {
+        return classificationStoreId;
+    }
+
+    public String getManualsStoreId() {
+        return manualsStoreId;
+    }
+
+    public String uploadFileToClassification(String displayName, byte[] content, String mimeType) {
+        return uploadFile(displayName, content, mimeType, classificationStoreId);
+    }
+
+    public String uploadFileToManuals(String displayName, byte[] content, String mimeType) {
+        return uploadFile(displayName, content, mimeType, manualsStoreId);
+    }
+
+    public String uploadFile(String displayName, byte[] content, String mimeType, String storeId) {
+        if (storeId == null) {
+            System.err.println("❌ Target Store ID is null. Cannot upload.");
+            return null;
         }
 
         // Endpoint: POST .../{storeName}:uploadToFileSearchStore
-        String uploadUrl = UPLOAD_URL + "/" + currentStoreId + ":uploadToFileSearchStore?key=" + apiKey;
+        String uploadUrl = UPLOAD_URL + "/" + storeId + ":uploadToFileSearchStore?key=" + apiKey;
 
         try {
             // We need to send a multipart request:
@@ -164,7 +258,7 @@ public class GoogleFileSearchService {
 
             // Create a ByteArrayResource with a filename so RestTemplate treats it as a
             // file upload
-            ByteArrayResource fileResource = new ByteArrayResource(fileContent) {
+            ByteArrayResource fileResource = new ByteArrayResource(content) {
                 @Override
                 public String getFilename() {
                     return displayName != null ? displayName : "file";
@@ -202,7 +296,9 @@ public class GoogleFileSearchService {
     // Overload for backward compatibility (Text/Plain) if needed, or just update
     // controller
     public String uploadDocument(String title, String content) {
-        return uploadFile(title, content.getBytes(StandardCharsets.UTF_8), "text/plain");
+        // This method needs to be updated to specify which store to upload to.
+        // For now, it will upload to the classification store as a default.
+        return uploadFile(title, content.getBytes(StandardCharsets.UTF_8), "text/plain", classificationStoreId);
     }
 
     /**
@@ -213,17 +309,17 @@ public class GoogleFileSearchService {
      * @param mimeType       Tipo MIME do arquivo
      * @param customMetadata Mapa de metadados customizados (categoria, módulo,
      *                       tags, etc.)
+     * @param storeId        ID do store para onde o arquivo será enviado
      * @return Nome da operação ou ID do documento
      */
     public String uploadFileWithMetadata(String displayName, byte[] fileContent, String mimeType,
-            Map<String, String> customMetadata) {
-        if (currentStoreId == null) {
-            ensureStoreExists();
-            if (currentStoreId == null)
-                throw new RuntimeException("File Search Store is not available.");
+            Map<String, String> customMetadata, String storeId) {
+        if (storeId == null) {
+            System.err.println("❌ Target Store ID is null. Cannot upload with metadata.");
+            throw new RuntimeException("File Search Store is not available.");
         }
 
-        String uploadUrl = UPLOAD_URL + "/" + currentStoreId + ":uploadToFileSearchStore?key=" + apiKey;
+        String uploadUrl = UPLOAD_URL + "/" + storeId + ":uploadToFileSearchStore?key=" + apiKey;
 
         try {
             JSONObject metadata = new JSONObject();
@@ -297,97 +393,114 @@ public class GoogleFileSearchService {
         }
     }
 
-    public boolean fileExists(String displayName) {
-        try {
-            // Basic implementation: list recent files and check names.
-            // Note: heavily paginated in real apps, but sufficient for this specific set of
-            // static files.
-            String listUrl = BASE_URL + "/files?key=" + apiKey;
-            ResponseEntity<String> response = restTemplate.getForEntity(listUrl, String.class);
+    public String uploadFileWithMetadataToClassification(String displayName, byte[] fileContent, String mimeType,
+            Map<String, String> customMetadata) {
+        return uploadFileWithMetadata(displayName, fileContent, mimeType, customMetadata, classificationStoreId);
+    }
 
-            if (response.getStatusCode().is2xxSuccessful()) {
+    public String uploadFileWithMetadataToManuals(String displayName, byte[] fileContent, String mimeType,
+            Map<String, String> customMetadata) {
+        return uploadFileWithMetadata(displayName, fileContent, mimeType, customMetadata, manualsStoreId);
+    }
+
+    public boolean fileExistsInClassification(String displayName) {
+        return fileExists(displayName, classificationStoreId);
+    }
+
+    /**
+     * Verifica se um arquivo com o displayName já existe no Google Cloud.
+     * IMPORTANTE: A Files API é global e não permite filtrar por Store.
+     * Precisamos verificar se o arquivo existe considerando todos os estados
+     * válidos.
+     */
+    public boolean fileExists(String displayName, String storeId) {
+        if (displayName == null || displayName.isBlank()) {
+            System.err.println("⚠️ Cannot check file existence: displayName is null or empty");
+            return false;
+        }
+
+        try {
+            System.out.println("🔍 Checking if file exists: " + displayName);
+
+            String url = BASE_URL + "/files?key=" + apiKey;
+            ResponseEntity<String> response = restTemplate.getForEntity(url, String.class);
+
+            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
                 JSONObject json = new JSONObject(response.getBody());
                 if (json.has("files")) {
                     JSONArray files = json.getJSONArray("files");
                     for (int i = 0; i < files.length(); i++) {
-                        if (files.getJSONObject(i).optString("displayName").equals(displayName)) {
-                            return true;
+                        JSONObject file = files.getJSONObject(i);
+                        String existingDisplayName = file.optString("displayName", "");
+
+                        if (displayName.equals(existingDisplayName)) {
+                            // Check file state - consider ACTIVE, PROCESSING as existing
+                            String state = file.optString("state", "UNKNOWN");
+                            System.out.println("  📝 Found file with state: " + state);
+
+                            if ("ACTIVE".equals(state) || "PROCESSING".equals(state)) {
+                                System.out.println("  ✅ File exists and is valid: " + displayName);
+                                return true;
+                            } else if ("FAILED".equals(state)) {
+                                System.out.println("  ⚠️ File exists but is in FAILED state: " + displayName);
+                                return false; // Allow re-upload of failed files
+                            }
                         }
                     }
                 }
             }
+
+            System.out.println("  ❌ File NOT found: " + displayName);
+            return false;
         } catch (Exception e) {
-            System.err.println("Warning: Could not list files to check existence: " + e.getMessage());
+            System.err.println("⚠️ Erro ao verificar existência do arquivo '" + displayName + "': " + e.getMessage());
+            e.printStackTrace();
         }
         return false;
     }
 
-    /**
-     * ATENÇÃO: Este método usa a Files API (não File Search API).
-     * A File Search API NÃO fornece endpoint para listar documentos individuais.
-     * 
-     * Para obter informações sobre documentos no FileSearchStore, use:
-     * - getStoreInfo() - retorna contagem de documentos ativos/pendentes/falhos
-     * - simpleSearch() - busca semântica nos documentos
-     * 
-     * Este método lista arquivos da Files API (upload simples), que é diferente
-     * dos documentos armazenados no FileSearchStore.
-     * 
-     * @return Lista de arquivos da Files API (pode estar vazia mesmo com documentos
-     *         no store)
-     */
-    public java.util.List<java.util.Map<String, Object>> listAllFiles() {
-        java.util.List<java.util.Map<String, Object>> fileList = new java.util.ArrayList<>();
+    public java.util.List<java.util.Map<String, Object>> listClassificationFiles() {
+        return listFiles(classificationStoreId);
+    }
 
-        System.out.println("⚠️ AVISO: listAllFiles() usa Files API, não File Search API");
-        System.out.println("   Para ver documentos do FileSearchStore, use getStoreInfo()");
+    public java.util.List<java.util.Map<String, Object>> listFiles(String storeId) {
+        if (storeId == null)
+            return java.util.Collections.emptyList();
 
+        String url = BASE_URL + "/" + storeId + "/files?key=" + apiKey;
         try {
-            String listUrl = BASE_URL + "/files?key=" + apiKey;
-            ResponseEntity<String> response = restTemplate.getForEntity(listUrl, String.class);
-
+            ResponseEntity<String> response = restTemplate.getForEntity(url, String.class);
             if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
                 JSONObject json = new JSONObject(response.getBody());
-
+                java.util.List<java.util.Map<String, Object>> fileList = new java.util.ArrayList<>();
                 if (json.has("files")) {
                     JSONArray files = json.getJSONArray("files");
-
                     for (int i = 0; i < files.length(); i++) {
                         JSONObject file = files.getJSONObject(i);
-
-                        java.util.Map<String, Object> fileInfo = new java.util.HashMap<>();
-                        fileInfo.put("name", file.optString("name", "N/A"));
-                        fileInfo.put("displayName", file.optString("displayName", "N/A"));
-                        fileInfo.put("mimeType", file.optString("mimeType", "N/A"));
-                        fileInfo.put("sizeBytes", file.optString("sizeBytes", "0"));
-                        fileInfo.put("createTime", file.optString("createTime", "N/A"));
-                        fileInfo.put("updateTime", file.optString("updateTime", "N/A"));
-                        fileInfo.put("state", file.optString("state", "N/A"));
-
-                        fileList.add(fileInfo);
+                        fileList.add(java.util.Map.of(
+                                "name", file.getString("name"),
+                                "displayName", file.optString("displayName", "unnamed")));
                     }
-
-                    System.out.println("✅ Listados " + fileList.size() + " arquivos da Files API");
-                } else {
-                    System.out.println("⚠️ Nenhum arquivo encontrado na Files API");
-                    System.out.println("   Isso é normal - documentos estão no FileSearchStore");
                 }
+                return fileList;
             }
         } catch (Exception e) {
-            System.err.println("❌ Erro ao listar arquivos da Files API: " + e.getMessage());
-            e.printStackTrace();
+            System.err.println("❌ Erro ao listar arquivos do store " + storeId + ": " + e.getMessage());
         }
-
-        return fileList;
+        return java.util.Collections.emptyList();
     }
 
-    public String simpleSearch(String query) {
-        return simpleSearch(query, null);
+    public String searchClassification(String query, String systemInstruction) {
+        return simpleSearch(query, systemInstruction, classificationStoreId);
     }
 
-    public String simpleSearch(String query, String systemInstruction) {
-        if (currentStoreId == null) {
-            ensureStoreExists();
+    public String searchManuals(String query, String systemInstruction) {
+        return simpleSearch(query, systemInstruction, manualsStoreId);
+    }
+
+    public String simpleSearch(String query, String systemInstruction, String storeId) {
+        if (storeId == null) {
+            return "Erro: Store ID não inicializado.";
         }
 
         String generateUrl = BASE_URL + "/models/gemini-2.5-flash-lite:generateContent?key=" + apiKey;
@@ -410,10 +523,15 @@ public class GoogleFileSearchService {
             contents.put(contentMsg);
             body.put("contents", contents);
 
+            // Generation Config (Lower temperature for consistency)
+            JSONObject generationConfig = new JSONObject();
+            generationConfig.put("temperature", 0.0);
+            body.put("generationConfig", generationConfig);
+
             // Tools (File Seach)
             JSONObject fileSearchTool = new JSONObject();
             JSONObject fileSearchObj = new JSONObject();
-            fileSearchObj.put("fileSearchStoreNames", new JSONArray().put(currentStoreId));
+            fileSearchObj.put("fileSearchStoreNames", new JSONArray().put(storeId));
             fileSearchTool.put("fileSearch", fileSearchObj);
 
             body.put("tools", new JSONArray().put(fileSearchTool));
@@ -482,18 +600,16 @@ public class GoogleFileSearchService {
      * Obtém informações detalhadas sobre o FileSearchStore
      * GET /v1beta/{name=fileSearchStores/*}
      * 
+     * @param storeId ID do store para obter informações
      * @return JSONObject com informações do store ou null se houver erro
      */
-    public JSONObject getStoreInfo() {
-        if (currentStoreId == null) {
-            ensureStoreExists();
-            if (currentStoreId == null) {
-                System.err.println("❌ Store ID não disponível");
-                return null;
-            }
+    public JSONObject getStoreInfo(String storeId) {
+        if (storeId == null) {
+            System.err.println("❌ Store ID não disponível");
+            return null;
         }
 
-        String url = BASE_URL + "/" + currentStoreId + "?key=" + apiKey;
+        String url = BASE_URL + "/" + storeId + "?key=" + apiKey;
 
         try {
             ResponseEntity<String> response = restTemplate.getForEntity(url, String.class);

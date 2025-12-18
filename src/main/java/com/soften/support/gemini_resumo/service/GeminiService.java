@@ -19,9 +19,11 @@ public class GeminiService {
     @Value("${gemini.api.key:}")
     private String apiKey;
     private final RestTemplate restTemplate = new RestTemplate();
+    private final GoogleFileSearchService fileSearchService;
     private static final String GEMINI_URL_BASE = "https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash-lite:generateContent?key=";
 
-    public GeminiService() {
+    public GeminiService(GoogleFileSearchService fileSearchService) {
+        this.fileSearchService = fileSearchService;
     }
 
     @PostConstruct
@@ -222,5 +224,60 @@ public class GeminiService {
 
     public String getPromptSummary() {
         return createSummaryPrompt();
+    }
+
+    /**
+     * Busca documentação oficial de forma inteligente (sobrecarga com categoria)
+     * Retorna uma lista de documentos do Spring AI
+     */
+    public List<org.springframework.ai.document.Document> buscarDocumentacaoOficialSmart(String query) {
+        return buscarDocumentacaoOficialSmart(query, "manuais");
+    }
+
+    /**
+     * Busca documentação oficial de forma inteligente com filtro de categoria
+     * Retorna uma lista de documentos do Spring AI
+     */
+    public List<org.springframework.ai.document.Document> buscarDocumentacaoOficialSmart(String query,
+            String categoria) {
+        try {
+            System.out.println("🔍 Busca Smart de documentação [" + categoria + "] para: " + query);
+
+            String systemInstruction = String.format("""
+                    Você é um assistente especializado em documentação técnica para o módulo/categoria: '%s'.
+                    Retorne apenas documentação oficial e relevante para a consulta fornecida.
+                    Ignore conteúdos que não sejam relacionados ao suporte técnico ou manuais de uso.
+                    """, categoria != null ? categoria : "Geral");
+
+            String searchQuery = "Recupere os documentos brutos para o termo: " + query;
+            String searchResult = fileSearchService.searchManuals(searchQuery, systemInstruction);
+
+            // Cria um documento Spring AI com o resultado
+            List<org.springframework.ai.document.Document> documents = new java.util.ArrayList<>();
+
+            if (searchResult != null && !searchResult.isEmpty() &&
+                    !searchResult.contains("Nenhuma correspondência") &&
+                    !searchResult.contains("Erro")) {
+
+                org.springframework.ai.document.Document doc = new org.springframework.ai.document.Document(
+                        "doc-" + System.currentTimeMillis(),
+                        searchResult,
+                        Map.of(
+                                "source", "Google File Search",
+                                "query", query,
+                                "categoria", categoria != null ? categoria : "N/A",
+                                "timestamp", System.currentTimeMillis()));
+                documents.add(doc);
+                System.out.println("✅ Documento criado com sucesso");
+            } else {
+                System.out.println("⚠️ Nenhuma documentação encontrada");
+            }
+
+            return documents;
+        } catch (Exception e) {
+            System.err.println("❌ Erro na busca smart: " + e.getMessage());
+            e.printStackTrace();
+            throw new RuntimeException("Erro na busca smart de documentação: " + e.getMessage());
+        }
     }
 }
