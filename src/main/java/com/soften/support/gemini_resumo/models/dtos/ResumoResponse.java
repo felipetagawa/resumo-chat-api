@@ -1,4 +1,4 @@
-package com.soften.support.gemini_resumo.dto;
+package com.soften.support.gemini_resumo.models.dtos;
 
 public class ResumoResponse {
     private String titulo;

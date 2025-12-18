@@ -226,18 +226,10 @@ public class GeminiService {
         return createSummaryPrompt();
     }
 
-    /**
-     * Busca documentação oficial de forma inteligente (sobrecarga com categoria)
-     * Retorna uma lista de documentos do Spring AI
-     */
     public List<org.springframework.ai.document.Document> buscarDocumentacaoOficialSmart(String query) {
         return buscarDocumentacaoOficialSmart(query, "manuais");
     }
 
-    /**
-     * Busca documentação oficial de forma inteligente com filtro de categoria
-     * Retorna uma lista de documentos do Spring AI
-     */
     public List<org.springframework.ai.document.Document> buscarDocumentacaoOficialSmart(String query,
             String categoria) {
         try {
@@ -252,7 +244,6 @@ public class GeminiService {
             String searchQuery = "Recupere os documentos brutos para o termo: " + query;
             String searchResult = fileSearchService.searchManuals(searchQuery, systemInstruction);
 
-            // Cria um documento Spring AI com o resultado
             List<org.springframework.ai.document.Document> documents = new java.util.ArrayList<>();
 
             if (searchResult != null && !searchResult.isEmpty() &&

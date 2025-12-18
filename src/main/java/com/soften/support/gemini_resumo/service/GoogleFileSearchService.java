@@ -27,17 +27,10 @@ public class GoogleFileSearchService {
     private static final String CLASSIFICATION_STORE_NAME = "ResumoChat_Classification_v2";
     private static final String MANUALS_STORE_NAME = "ResumoChat_Manuals_v2";
 
-    // ... (restante do código)
-
-    /**
-     * Deleta TODOS os stores e ARQUIVOS vinculados ao sistema no Google Cloud.
-     * Realiza uma limpeza completa para evitar duplicatas e órfãos.
-     */
     public boolean deleteStores() {
         try {
             System.out.println("☢️ INICIANDO LIMPEZA NUCLEAR DA BASE GOOGLE...");
 
-            // 1. Listar e deletar arquivos de CADA store, depois deletar o store
             String listStoresUrl = BASE_URL + "/fileSearchStores?key=" + apiKey;
             ResponseEntity<String> storeResponse = restTemplate.getForEntity(listStoresUrl, String.class);
             if (storeResponse.getStatusCode().is2xxSuccessful() && storeResponse.getBody() != null) {
@@ -52,11 +45,9 @@ public class GoogleFileSearchService {
                         if (dName.contains("ResumoChat_")) {
                             System.out.println("📋 Processando Store: [" + dName + "] (" + sName + ")");
 
-                            // 1.1. Deletar TODOS os arquivos dentro do store primeiro
                             int deletedFiles = deleteAllFilesFromStore(sName);
                             System.out.println("  ✅ Deletados " + deletedFiles + " arquivo(s) do store");
 
-                            // 1.2. Agora deletar o store vazio
                             System.out.println("  🗑️ Removendo Store vazio: [" + dName + "]");
                             deleteSpecificStore(sName);
                         }
@@ -64,7 +55,6 @@ public class GoogleFileSearchService {
                 }
             }
 
-            // 2. Deletar Arquivos Órfãos da Files API Global (que não estão em stores)
             String listFilesUrl = BASE_URL + "/files?key=" + apiKey;
             ResponseEntity<String> fileResponse = restTemplate.getForEntity(listFilesUrl, String.class);
             if (fileResponse.getStatusCode().is2xxSuccessful() && fileResponse.getBody() != null) {
@@ -75,9 +65,8 @@ public class GoogleFileSearchService {
                     for (int i = 0; i < files.length(); i++) {
                         JSONObject file = files.getJSONObject(i);
                         String dName = file.optString("displayName", "");
-                        String fName = file.getString("name"); // format: files/xyz
+                        String fName = file.getString("name");
 
-                        // Deleta apenas arquivos do sistema
                         if (dName.startsWith("CLASS_") || dName.contains(".txt")) {
                             System.out.println("🗑️ Removendo Arquivo Órfão: " + dName);
                             deleteFile(fName);
@@ -101,16 +90,8 @@ public class GoogleFileSearchService {
         }
     }
 
-    /**
-     * Deleta todos os arquivos de um store específico.
-     * A API do Google exige que stores estejam vazios antes de serem deletados.
-     * 
-     * @param storeId ID do store
-     * @return Número de arquivos deletados
-     */
     private int deleteAllFilesFromStore(String storeId) {
         try {
-            // Usar a Files API global para listar arquivos
             String listFilesUrl = BASE_URL + "/files?key=" + apiKey;
             ResponseEntity<String> response = restTemplate.getForEntity(listFilesUrl, String.class);
 
@@ -123,10 +104,9 @@ public class GoogleFileSearchService {
 
                     for (int i = 0; i < files.length(); i++) {
                         JSONObject file = files.getJSONObject(i);
-                        String fileName = file.getString("name"); // format: files/xyz
+                        String fileName = file.getString("name");
                         String displayName = file.optString("displayName", "");
 
-                        // Deletar o arquivo
                         System.out.println("    🗑️ Deletando arquivo: " + displayName + " (" + fileName + ")");
                         if (deleteFile(fileName)) {
                             deletedCount++;
@@ -169,7 +149,6 @@ public class GoogleFileSearchService {
 
     private String ensureStoreExists(String displayName) {
         try {
-            // 1. List existing stores to find ours
             String listUrl = BASE_URL + "/fileSearchStores?key=" + apiKey;
             ResponseEntity<String> response = restTemplate.getForEntity(listUrl, String.class);
 
@@ -188,7 +167,6 @@ public class GoogleFileSearchService {
                 }
             }
 
-            // 2. Create if not found
             System.out.println("🔨 Creating new File Search Store: " + displayName);
             String createUrl = BASE_URL + "/fileSearchStores?key=" + apiKey;
             JSONObject createBody = new JSONObject();
@@ -234,14 +212,9 @@ public class GoogleFileSearchService {
             return null;
         }
 
-        // Endpoint: POST .../{storeName}:uploadToFileSearchStore
         String uploadUrl = UPLOAD_URL + "/" + storeId + ":uploadToFileSearchStore?key=" + apiKey;
 
         try {
-            // We need to send a multipart request:
-            // Part 1: Metadata (MIME type application/json)
-            // Part 2: File Content (MIME type of the file)
-
             JSONObject metadata = new JSONObject();
             metadata.put("displayName", displayName);
 
@@ -256,8 +229,6 @@ public class GoogleFileSearchService {
                 fileHeaders.setContentType(MediaType.APPLICATION_OCTET_STREAM);
             }
 
-            // Create a ByteArrayResource with a filename so RestTemplate treats it as a
-            // file upload
             ByteArrayResource fileResource = new ByteArrayResource(content) {
                 @Override
                 public String getFilename() {
@@ -282,7 +253,7 @@ public class GoogleFileSearchService {
                 if (responseJson.has("response")) {
                     return responseJson.getJSONObject("response").optString("name");
                 }
-                return "Upload initiated"; // Async operation
+                return "Upload initiated";
             }
 
             throw new RuntimeException("Upload failed with status: " + response.getStatusCode());
@@ -293,25 +264,10 @@ public class GoogleFileSearchService {
         }
     }
 
-    // Overload for backward compatibility (Text/Plain) if needed, or just update
-    // controller
     public String uploadDocument(String title, String content) {
-        // This method needs to be updated to specify which store to upload to.
-        // For now, it will upload to the classification store as a default.
         return uploadFile(title, content.getBytes(StandardCharsets.UTF_8), "text/plain", classificationStoreId);
     }
 
-    /**
-     * Upload de arquivo com metadados customizados para melhorar a busca
-     * 
-     * @param displayName    Nome do arquivo
-     * @param fileContent    Conteúdo do arquivo em bytes
-     * @param mimeType       Tipo MIME do arquivo
-     * @param customMetadata Mapa de metadados customizados (categoria, módulo,
-     *                       tags, etc.)
-     * @param storeId        ID do store para onde o arquivo será enviado
-     * @return Nome da operação ou ID do documento
-     */
     public String uploadFileWithMetadata(String displayName, byte[] fileContent, String mimeType,
             Map<String, String> customMetadata, String storeId) {
         if (storeId == null) {
@@ -325,7 +281,6 @@ public class GoogleFileSearchService {
             JSONObject metadata = new JSONObject();
             metadata.put("displayName", displayName);
 
-            // Adiciona custom metadata se fornecido
             if (customMetadata != null && !customMetadata.isEmpty()) {
                 JSONArray customMetadataArray = new JSONArray();
                 for (Map.Entry<String, String> entry : customMetadata.entrySet()) {
@@ -407,12 +362,6 @@ public class GoogleFileSearchService {
         return fileExists(displayName, classificationStoreId);
     }
 
-    /**
-     * Verifica se um arquivo com o displayName já existe no Google Cloud.
-     * IMPORTANTE: A Files API é global e não permite filtrar por Store.
-     * Precisamos verificar se o arquivo existe considerando todos os estados
-     * válidos.
-     */
     public boolean fileExists(String displayName, String storeId) {
         if (displayName == null || displayName.isBlank()) {
             System.err.println("⚠️ Cannot check file existence: displayName is null or empty");
@@ -434,7 +383,6 @@ public class GoogleFileSearchService {
                         String existingDisplayName = file.optString("displayName", "");
 
                         if (displayName.equals(existingDisplayName)) {
-                            // Check file state - consider ACTIVE, PROCESSING as existing
                             String state = file.optString("state", "UNKNOWN");
                             System.out.println("  📝 Found file with state: " + state);
 
@@ -443,7 +391,7 @@ public class GoogleFileSearchService {
                                 return true;
                             } else if ("FAILED".equals(state)) {
                                 System.out.println("  ⚠️ File exists but is in FAILED state: " + displayName);
-                                return false; // Allow re-upload of failed files
+                                return false;
                             }
                         }
                     }
@@ -515,7 +463,6 @@ public class GoogleFileSearchService {
                 body.put("system_instruction", systemInstructionObj);
             }
 
-            // Contents
             JSONArray contents = new JSONArray();
             JSONObject contentMsg = new JSONObject();
             contentMsg.put("role", "user");
@@ -523,12 +470,10 @@ public class GoogleFileSearchService {
             contents.put(contentMsg);
             body.put("contents", contents);
 
-            // Generation Config (Lower temperature for consistency)
             JSONObject generationConfig = new JSONObject();
             generationConfig.put("temperature", 0.0);
             body.put("generationConfig", generationConfig);
 
-            // Tools (File Seach)
             JSONObject fileSearchTool = new JSONObject();
             JSONObject fileSearchObj = new JSONObject();
             fileSearchObj.put("fileSearchStoreNames", new JSONArray().put(storeId));
@@ -549,7 +494,6 @@ public class GoogleFileSearchService {
                 try {
                     JSONObject json = new JSONObject(responseBody);
 
-                    // Check if we have candidates
                     if (!json.has("candidates") || json.getJSONArray("candidates").length() == 0) {
                         System.err.println("❌ No candidates in response");
                         return "Nenhuma correspondência encontrada na documentação.";
@@ -557,7 +501,6 @@ public class GoogleFileSearchService {
 
                     JSONObject candidate = json.getJSONArray("candidates").getJSONObject(0);
 
-                    // Check if content exists
                     if (!candidate.has("content")) {
                         System.err.println("❌ No content in candidate");
                         return "Resposta sem conteúdo.";
@@ -565,13 +508,11 @@ public class GoogleFileSearchService {
 
                     JSONObject content = candidate.getJSONObject("content");
 
-                    // Check if parts exists
                     if (!content.has("parts") || content.getJSONArray("parts").length() == 0) {
                         System.err.println("❌ No parts in content");
                         return "Resposta sem partes de texto.";
                     }
 
-                    // Extract text from first part
                     JSONObject firstPart = content.getJSONArray("parts").getJSONObject(0);
 
                     if (firstPart.has("text")) {
@@ -596,13 +537,6 @@ public class GoogleFileSearchService {
         }
     }
 
-    /**
-     * Obtém informações detalhadas sobre o FileSearchStore
-     * GET /v1beta/{name=fileSearchStores/*}
-     * 
-     * @param storeId ID do store para obter informações
-     * @return JSONObject com informações do store ou null se houver erro
-     */
     public JSONObject getStoreInfo(String storeId) {
         if (storeId == null) {
             System.err.println("❌ Store ID não disponível");
@@ -617,7 +551,6 @@ public class GoogleFileSearchService {
             if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
                 JSONObject storeInfo = new JSONObject(response.getBody());
 
-                // Log das informações do store
                 System.out.println("📊 FileSearchStore Info:");
                 System.out.println("  Name: " + storeInfo.optString("name", "N/A"));
                 System.out.println("  Display Name: " + storeInfo.optString("displayName", "N/A"));
@@ -641,19 +574,11 @@ public class GoogleFileSearchService {
         }
     }
 
-    /**
-     * Deleta um arquivo específico da Files API.
-     * DELETE /v1beta/files/{name}
-     * 
-     * @param fileName Nome do recurso (ex: "files/abc-123")
-     * @return true se deletado com sucesso
-     */
     public boolean deleteFile(String fileName) {
         if (fileName == null || fileName.isBlank())
             return false;
 
         try {
-            // Se vier apenas o ID, adiciona o prefixo
             if (!fileName.startsWith("files/")) {
                 fileName = "files/" + fileName;
             }

@@ -11,7 +11,7 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api/gemini")
-@CrossOrigin(origins = "*") // ajuste em produção
+@CrossOrigin(origins = "*")
 public class GeminiController {
 
     private final GeminiService geminiService;
