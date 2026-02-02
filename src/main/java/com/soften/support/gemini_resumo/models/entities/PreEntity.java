@@ -1,0 +1,36 @@
+package com.soften.support.gemini_resumo.models.entities;
+
+import jakarta.persistence.*;
+import lombok.Getter;
+import lombok.Setter;
+
+import java.util.Date;
+import java.util.UUID;
+
+@Entity
+@Getter
+@Setter
+public class PreEntity {
+    @Id
+    @GeneratedValue(strategy = GenerationType.UUID)
+    @Column(name = "id_pre", unique = true, nullable = false)
+    UUID id;
+    @Column(name = "name_pre", nullable = false, length = 255)
+    String name;
+    @Column(name = "name_client", nullable = false, length = 255)
+    String nameClient;
+    @Column(name = "date_chat", nullable = false)
+    Date date;
+    @Column(name = "time_chat", nullable = false)
+    String time;
+
+    public PreEntity() {
+    }
+
+    public PreEntity(UUID id, String name, Date date, String time) {
+        this.id = id;
+        this.name = name;
+        this.date = date;
+        this.time = time;
+    }
+}
