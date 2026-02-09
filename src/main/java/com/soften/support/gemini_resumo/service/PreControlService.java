@@ -3,10 +3,17 @@ package com.soften.support.gemini_resumo.service;
 import com.soften.support.gemini_resumo.models.dtos.PreTimeDto;
 import com.soften.support.gemini_resumo.models.entities.PreEntity;
 import com.soften.support.gemini_resumo.repositorys.PreControlRepositoy;
+import jakarta.persistence.criteria.Predicate;
 import jakarta.transaction.Transactional;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.util.ArrayList;
 import java.util.List;
 
 @Service
@@ -25,103 +32,60 @@ public class PreControlService {
         var entity = new PreEntity();
         entity.setName(sanitizeName(dto.name()));
         entity.setNameClient(sanitizeClient(dto.nameClient()));
-        entity.setDate(dto.date());
-        entity.setTime(dto.time());
+        entity.setDate(dto.date() != null ? dto.date() : LocalDateTime.now());
+        entity.setTime(dto.time() != null ? dto.time() : "00:00");
         entity.setNegociation(dto.negociation());
 
         var saved = repo.save(entity);
         return toDto(saved);
     }
 
-    @Transactional
-    public List<PreTimeDto> List() {
-        return repo.findAll().stream().map(this::toDto).toList();
-    }
+    public Page<PreTimeDto> findAll(
+            String name,
+            Boolean negociation,
+            LocalDate dateExact,
+            LocalDate dateFrom,
+            LocalDate dateTo,
+            Pageable pageable
+    ) {
+        Specification<PreEntity> spec = (root, query, cb) -> {
+            List<Predicate> predicates = new ArrayList<>();
 
-    @Transactional
-    public List<PreTimeDto> FindByName(String name) {
-        return repo.findByName(sanitizeName(name)).stream().map(this::toDto).toList();
-    }
+            if (name != null && !name.trim().isBlank()) {
+                predicates.add(cb.like(cb.lower(root.get("name")), "%" + name.toLowerCase().trim() + "%"));
+            }
 
-    @Transactional
-    public List<PreTimeDto> FindByDate(LocalDate date) {
-        return repo.findByDate(date).stream().map(this::toDto).toList();
-    }
+            if (negociation != null) {
+                predicates.add(cb.equal(root.get("negociation"), negociation));
+            }
 
-    @Transactional
-    public List<PreTimeDto> FindByNameAndDate(String name, LocalDate date) {
-        return repo.findByNameAndDate(sanitizeName(name), date).stream().map(this::toDto).toList();
-    }
+            if (dateExact != null) {
+                LocalDateTime startOfDay = dateExact.atStartOfDay();
+                LocalDateTime endOfDay = dateExact.atTime(LocalTime.MAX);
+                predicates.add(cb.between(root.get("date"), startOfDay, endOfDay));
+            } else {
+                if (dateFrom != null) {
+                    predicates.add(cb.greaterThanOrEqualTo(root.get("date"), dateFrom.atStartOfDay()));
+                }
+                if (dateTo != null) {
+                    predicates.add(cb.lessThanOrEqualTo(root.get("date"), dateTo.atTime(LocalTime.MAX)));
+                }
+            }
 
-    @Transactional
-    public List<PreTimeDto> FindByNameAndNegociation(String name, boolean negociation) {
-        return repo.findByNameAndNegociation(sanitizeName(name), negociation).stream().map(this::toDto).toList();
-    }
+            return cb.and(predicates.toArray(new Predicate[0]));
+        };
 
-    @Transactional
-    public List<PreTimeDto> FindByDateAndNegociation(LocalDate date, boolean negociation) {
-        return repo.findByDateAndNegociation(date, negociation).stream().map(this::toDto).toList();
-    }
-
-    @Transactional
-    public List<PreTimeDto> FindByNameAndDateAndNegociation(String name, LocalDate date, boolean negociation) {
-        return repo.findByNameAndDateAndNegociation(sanitizeName(name), date, negociation).stream().map(this::toDto).toList();
-    }
-
-    @Transactional
-    public List<PreTimeDto> FindByNegociation(boolean negociation) {
-        return repo.findByNegociation(negociation).stream().map(this::toDto).toList();
-    }
-
-    @Transactional
-    public List<PreTimeDto> findByPeriod(LocalDate from, LocalDate to) {
-        var p = normalizePeriod(from, to);
-        return repo.findByDateBetween(p.from(), p.to()).stream().map(this::toDto).toList();
-    }
-
-    @Transactional
-    public List<PreTimeDto> findByNameAndPeriod(String name, LocalDate from, LocalDate to) {
-        var p = normalizePeriod(from, to);
-        return repo.findByNameAndDateBetween(sanitizeName(name), p.from(), p.to()).stream().map(this::toDto).toList();
-    }
-
-    @Transactional
-    public List<PreTimeDto> findByPeriodAndNegociation(LocalDate from, LocalDate to, boolean negociation) {
-        var p = normalizePeriod(from, to);
-        return repo.findByDateBetweenAndNegociation(p.from(), p.to(), negociation).stream().map(this::toDto).toList();
-    }
-
-    @Transactional
-    public List<PreTimeDto> findByNameAndPeriodAndNegociation(String name, LocalDate from, LocalDate to, boolean negociation) {
-        var p = normalizePeriod(from, to);
-        return repo.findByNameAndDateBetweenAndNegociation(sanitizeName(name), p.from(), p.to(), negociation)
-                .stream().map(this::toDto).toList();
+        return repo.findAll(spec, pageable).map(this::toDto);
     }
 
     private String sanitizeName(String v) {
-        var s = v == null ? "" : v.trim();
-        if (s.isBlank()) throw new IllegalArgumentException("name is required");
-        return s;
+        if (v == null || v.trim().isBlank()) throw new IllegalArgumentException("Name is required");
+        return v.trim();
     }
 
     private String sanitizeClient(String v) {
-        var s = v == null ? "" : v.trim();
-        return s;
+        return v == null ? "" : v.trim();
     }
-
-    private Period normalizePeriod(LocalDate from, LocalDate to) {
-        if (from == null && to == null) {
-            throw new IllegalArgumentException("period requires dateFrom or dateTo");
-        }
-        LocalDate f = (from != null) ? from : to;
-        LocalDate t = (to != null) ? to : from;
-        if (f.isAfter(t)) {
-            var tmp = f; f = t; t = tmp;
-        }
-        return new Period(f, t);
-    }
-
-    private record Period(LocalDate from, LocalDate to) {}
 
     private PreTimeDto toDto(PreEntity e) {
         return new PreTimeDto(

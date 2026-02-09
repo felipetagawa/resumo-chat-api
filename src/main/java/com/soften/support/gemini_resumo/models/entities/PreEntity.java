@@ -4,7 +4,7 @@ import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
 
-import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.UUID;
 
 @Entity
@@ -20,7 +20,7 @@ public class PreEntity {
     @Column(name = "name_client", nullable = false, length = 255)
     String nameClient;
     @Column(name = "date_chat", nullable = false)
-    LocalDate date;
+    LocalDateTime date;
     @Column(name = "time_chat", nullable = false)
     String time;
     @Column(name = "negociation_chat", nullable = false)
@@ -29,7 +29,7 @@ public class PreEntity {
     public PreEntity() {
     }
 
-    public PreEntity(UUID id, String name, LocalDate date, String time, Boolean negociation) {
+    public PreEntity(UUID id, String name, LocalDateTime date, String time, Boolean negociation) {
         this.id = id;
         this.name = name;
         this.date = date;
