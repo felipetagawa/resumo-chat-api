@@ -1,0 +1,6 @@
+
+ALTER TABLE pre_entity
+ALTER COLUMN date_chat TYPE TIMESTAMP WITHOUT TIME ZONE
+USING date_chat::timestamp;
+
+ALTER TABLE pre_entity  ALTER COLUMN time_chat TYPE VARCHAR(255);

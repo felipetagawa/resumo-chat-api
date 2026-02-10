@@ -9,6 +9,7 @@ import lombok.Setter;
 import java.util.UUID;
 
 @Entity
+@Table(name = "called_entity")
 @Getter
 @Setter
 public class CalledEntity {
