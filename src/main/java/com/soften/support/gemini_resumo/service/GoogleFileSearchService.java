@@ -142,8 +142,18 @@ public class GoogleFileSearchService {
     @PostConstruct
     public void init() {
         if (apiKey != null && !apiKey.isBlank()) {
-            this.classificationStoreId = ensureStoreExists(CLASSIFICATION_STORE_NAME);
-            this.manualsStoreId = ensureStoreExists(MANUALS_STORE_NAME);
+            // Run initialization in a separate thread to avoid blocking application startup
+            new Thread(() -> {
+                try {
+                    System.out.println("🚀 Starting Google File Search Service initialization in background...");
+                    this.classificationStoreId = ensureStoreExists(CLASSIFICATION_STORE_NAME);
+                    this.manualsStoreId = ensureStoreExists(MANUALS_STORE_NAME);
+                    System.out.println("✅ Google File Search Service initialized successfully.");
+                } catch (Exception e) {
+                    System.err.println("❌ Failed to initialize Google File Search Service: " + e.getMessage());
+                    e.printStackTrace();
+                }
+            }).start();
         }
     }
 
