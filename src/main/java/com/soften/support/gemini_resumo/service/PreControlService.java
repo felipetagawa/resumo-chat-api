@@ -8,7 +8,9 @@ import jakarta.transaction.Transactional;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -19,6 +21,8 @@ import java.util.List;
 @Service
 public class PreControlService {
 
+    private static final String PRE_PERSISTENCE_DISABLED_MESSAGE = "PRE profile persistence is disabled";
+
     private final PreControlRepositoy repo;
 
     public PreControlService(PreControlRepositoy repo) {
@@ -27,17 +31,7 @@ public class PreControlService {
 
     @Transactional
     public PreTimeDto create(PreTimeDto dto) {
-        if (dto.id() != null) throw new IllegalArgumentException("id must be null on create");
-
-        var entity = new PreEntity();
-        entity.setName(sanitizeName(dto.name()));
-        entity.setNameClient(sanitizeClient(dto.nameClient()));
-        entity.setDate(dto.date() != null ? dto.date() : LocalDateTime.now());
-        entity.setTime(dto.time() != null ? dto.time() : "00:00");
-        entity.setNegociation(dto.negociation());
-
-        var saved = repo.save(entity);
-        return toDto(saved);
+        throw new ResponseStatusException(HttpStatus.GONE, PRE_PERSISTENCE_DISABLED_MESSAGE);
     }
 
     public Page<PreTimeDto> findAll(

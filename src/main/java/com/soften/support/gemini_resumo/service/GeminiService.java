@@ -15,6 +15,7 @@ import java.util.Map;
 
 @Service
 public class GeminiService {
+    public static final int PROMPT_COMPLEMENT_MAX_LENGTH = 2000;
 
     @Value("${gemini.api.key:}")
     private String apiKey;
@@ -104,13 +105,43 @@ public class GeminiService {
         }
     }
 
-    public String generateSummary(String textService, String prompt) {
+    public String generateSummary(String textService) {
+        String prompt = createSummaryPromptWithComplement(null);
         return generateGenericSummary(textService, prompt);
     }
 
-    public String generateSummary(String textService) {
-        String prompt = createSummaryPrompt();
+    public String generateSummary(String textService, String promptComplement) {
+        String prompt = createSummaryPromptWithComplement(promptComplement);
         return generateGenericSummary(textService, prompt);
+    }
+
+    public String validateAndNormalizePromptComplement(String promptComplement) {
+        if (promptComplement == null) {
+            return null;
+        }
+
+        String normalized = promptComplement.trim();
+        if (normalized.isBlank()) {
+            return null;
+        }
+
+        if (normalized.length() > PROMPT_COMPLEMENT_MAX_LENGTH) {
+            throw new IllegalArgumentException(
+                    "Campo 'promptComplement' excede o limite de " + PROMPT_COMPLEMENT_MAX_LENGTH + " caracteres.");
+        }
+        return normalized;
+    }
+
+    String createSummaryPromptWithComplement(String promptComplement) {
+        String basePrompt = createSummaryPrompt();
+        String normalizedComplement = validateAndNormalizePromptComplement(promptComplement);
+        if (normalizedComplement == null) {
+            return basePrompt;
+        }
+
+        return basePrompt
+                + "\n\nINSTRUCOES COMPLEMENTARES DO USUARIO:\n"
+                + normalizedComplement;
     }
 
     private String createSummaryPrompt() {
@@ -222,9 +253,7 @@ public class GeminiService {
         }
     }
 
-    public String getPromptSummary() {
-        return createSummaryPrompt();
-    }
+    public String getPromptSummary() { return createSummaryPrompt(); }
 
     public List<org.springframework.ai.document.Document> buscarDocumentacaoOficialSmart(String query) {
         return buscarDocumentacaoOficialSmart(query, "manuais");

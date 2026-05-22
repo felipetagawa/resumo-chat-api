@@ -43,11 +43,19 @@ public class CalledService {
         return summaryService.createDtoSummary(textCalled);
     }
 
+    public SummaryDto generateSummaryWithoutSaving(String textCalled, String promptComplement) {
+        return summaryService.createDtoSummary(textCalled, promptComplement);
+    }
+
     public TipResponseDto processFullTip(String textCalled) {
+        return processFullTip(textCalled, null);
+    }
+
+    public TipResponseDto processFullTip(String textCalled, String promptComplement) {
         try {
             System.out.println("=== INICIANDO PROCESSAMENTO DE DICA ===");
 
-            SummaryDto summaryDto = generateSummaryWithoutSaving(textCalled);
+            SummaryDto summaryDto = generateSummaryWithoutSaving(textCalled, promptComplement);
             FormatSummary formatSummary = summaryDto.formatSummary();
 
             System.out.println("Problema atual: " + formatSummary.problem());

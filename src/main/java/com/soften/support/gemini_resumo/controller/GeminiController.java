@@ -37,11 +37,18 @@ public class GeminiController {
                     .body(Map.of("erro", "Campo 'texto' não pode estar vazio."));
         }
 
+        String promptComplementRaw = body.get("promptComplement") == null ? null : body.get("promptComplement").toString();
+
         try {
-            String summary = geminiService.generateSummary(texto);
+            String promptComplement = geminiService.validateAndNormalizePromptComplement(promptComplementRaw);
+            String summary = geminiService.generateSummary(texto, promptComplement);
             calledService.SaveCall(summary);
 
             return ResponseEntity.ok(Map.of("summary", summary));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity
+                    .status(HttpStatus.BAD_REQUEST)
+                    .body(Map.of("erro", e.getMessage()));
         } catch (RuntimeException e) {
             return ResponseEntity
                     .status(HttpStatus.BAD_GATEWAY)
