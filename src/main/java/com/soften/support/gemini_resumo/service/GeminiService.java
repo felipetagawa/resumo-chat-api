@@ -36,9 +36,9 @@ public class GeminiService {
         }
     }
 
-    private String generateGenericSummary(String textService, String contextPrompt) {
+    private String generateGenericSummary(String textService, String promptComplement, String contextPrompt) {
         try {
-            String prompt = contextPrompt + "\n\nATENDIMENTO ANALISADO:\n" + textService + "\n";
+            String prompt = contextPrompt + "\n\n" + buildSummaryInput(textService, promptComplement);
 
             JSONObject body = new JSONObject();
             JSONArray contents = new JSONArray();
@@ -72,10 +72,6 @@ public class GeminiService {
             }
 
             JSONObject json = new JSONObject(respBody);
-            String rawText = json.getJSONArray("candidates")
-                    .getJSONObject(0).getJSONObject("content").getJSONArray("parts")
-                    .getJSONObject(0).getString("text");
-
             String finishReason = json
                     .getJSONArray("candidates")
                     .getJSONObject(0)
@@ -106,13 +102,13 @@ public class GeminiService {
     }
 
     public String generateSummary(String textService) {
-        String prompt = createSummaryPromptWithComplement(null);
-        return generateGenericSummary(textService, prompt);
+        String prompt = createSummaryPrompt();
+        return generateGenericSummary(textService, null, prompt);
     }
 
     public String generateSummary(String textService, String promptComplement) {
-        String prompt = createSummaryPromptWithComplement(promptComplement);
-        return generateGenericSummary(textService, prompt);
+        String prompt = createSummaryPrompt();
+        return generateGenericSummary(textService, promptComplement, prompt);
     }
 
     public String validateAndNormalizePromptComplement(String promptComplement) {
@@ -149,6 +145,8 @@ public class GeminiService {
                     **Instrução Importante:** Analise toda a conversa do início ao fim.
                     Ignore qualquer mensagem enviada pelo bot chamado "Automatico".
                     Considere apenas o cliente e o atendente humano.
+                    Se houver a seção "COMPLEMENTO INFORMADO PELO ATENDENTE", trate esse conteúdo como contexto adicional confiável fornecido pelo atendente.
+                    Não trate esse complemento como fala do cliente.
 
                     Escreva **tudo em primeira pessoa**, como se **eu**, técnico, estivesse fazendo o summary.
                     O resultado deve ser explicito, contextual e seguir *exatamente* o formato abaixo:
@@ -219,6 +217,21 @@ public class GeminiService {
 
                     Se houver documentos fiscais, considere qual módulo eles representam. Se houver mais de um assunto no chat, escolha o tema predominante.
                     """;
+    }
+
+    private String buildSummaryInput(String textService, String promptComplement) {
+        StringBuilder input = new StringBuilder();
+        input.append("ATENDIMENTO ANALISADO:\n")
+                .append(textService)
+                .append("\n");
+
+        if (promptComplement != null && !promptComplement.isBlank()) {
+            input.append("\nCOMPLEMENTO INFORMADO PELO ATENDENTE:\n")
+                    .append(promptComplement.trim())
+                    .append("\n");
+        }
+
+        return input.toString();
     }
 
     public String ask(String prompt) {
