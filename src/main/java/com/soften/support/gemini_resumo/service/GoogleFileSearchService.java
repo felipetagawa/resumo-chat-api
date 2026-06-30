@@ -1,9 +1,9 @@
 package com.soften.support.gemini_resumo.service;
 
+import com.soften.support.gemini_resumo.config.GeminiApiProperties;
 import jakarta.annotation.PostConstruct;
 import org.json.JSONArray;
 import org.json.JSONObject;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
@@ -17,21 +17,23 @@ import java.util.Map;
 @Service
 public class GoogleFileSearchService {
 
-    @Value("${gemini.api.key:}")
-    private String apiKey;
-
     private final RestTemplate restTemplate = new RestTemplate();
+    private final GeminiApiProperties properties;
 
     private static final String BASE_URL = "https://generativelanguage.googleapis.com/v1beta";
     private static final String UPLOAD_URL = "https://generativelanguage.googleapis.com/upload/v1beta";
     private static final String CLASSIFICATION_STORE_NAME = "ResumoChat_Classification_v2";
     private static final String MANUALS_STORE_NAME = "ResumoChat_Manuals_v2";
 
+    public GoogleFileSearchService(GeminiApiProperties properties) {
+        this.properties = properties;
+    }
+
     public boolean deleteStores() {
         try {
             System.out.println("☢️ INICIANDO LIMPEZA NUCLEAR DA BASE GOOGLE...");
 
-            String listStoresUrl = BASE_URL + "/fileSearchStores?key=" + apiKey;
+            String listStoresUrl = BASE_URL + "/fileSearchStores?key=" + properties.getKey();
             ResponseEntity<String> storeResponse = restTemplate.getForEntity(listStoresUrl, String.class);
             if (storeResponse.getStatusCode().is2xxSuccessful() && storeResponse.getBody() != null) {
                 JSONObject json = new JSONObject(storeResponse.getBody());
@@ -55,7 +57,7 @@ public class GoogleFileSearchService {
                 }
             }
 
-            String listFilesUrl = BASE_URL + "/files?key=" + apiKey;
+            String listFilesUrl = BASE_URL + "/files?key=" + properties.getKey();
             ResponseEntity<String> fileResponse = restTemplate.getForEntity(listFilesUrl, String.class);
             if (fileResponse.getStatusCode().is2xxSuccessful() && fileResponse.getBody() != null) {
                 JSONObject json = new JSONObject(fileResponse.getBody());
@@ -92,7 +94,7 @@ public class GoogleFileSearchService {
 
     private int deleteAllFilesFromStore(String storeId) {
         try {
-            String listFilesUrl = BASE_URL + "/files?key=" + apiKey;
+            String listFilesUrl = BASE_URL + "/files?key=" + properties.getKey();
             ResponseEntity<String> response = restTemplate.getForEntity(listFilesUrl, String.class);
 
             if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
@@ -127,7 +129,7 @@ public class GoogleFileSearchService {
             return false;
         try {
             System.out.println("🔄 Deletando Store: " + storeId);
-            String deleteUrl = BASE_URL + "/" + storeId + "?key=" + apiKey;
+            String deleteUrl = BASE_URL + "/" + storeId + "?key=" + properties.getKey();
             restTemplate.delete(deleteUrl);
             return true;
         } catch (Exception e) {
@@ -141,14 +143,18 @@ public class GoogleFileSearchService {
 
     @PostConstruct
     public void init() {
-        if (apiKey != null && !apiKey.isBlank()) {
+        if (properties.getKey() != null && !properties.getKey().isBlank()) {
             // Run initialization in a separate thread to avoid blocking application startup
             new Thread(() -> {
                 try {
                     System.out.println("🚀 Starting Google File Search Service initialization in background...");
                     this.classificationStoreId = ensureStoreExists(CLASSIFICATION_STORE_NAME);
                     this.manualsStoreId = ensureStoreExists(MANUALS_STORE_NAME);
-                    System.out.println("✅ Google File Search Service initialized successfully.");
+                    if (this.classificationStoreId != null && this.manualsStoreId != null) {
+                        System.out.println("✅ Google File Search Service initialized successfully.");
+                    } else {
+                        System.err.println("⚠️ Google File Search Service initialization completed with missing stores.");
+                    }
                 } catch (Exception e) {
                     System.err.println("❌ Failed to initialize Google File Search Service: " + e.getMessage());
                     e.printStackTrace();
@@ -159,7 +165,7 @@ public class GoogleFileSearchService {
 
     private String ensureStoreExists(String displayName) {
         try {
-            String listUrl = BASE_URL + "/fileSearchStores?key=" + apiKey;
+            String listUrl = BASE_URL + "/fileSearchStores?key=" + properties.getKey();
             ResponseEntity<String> response = restTemplate.getForEntity(listUrl, String.class);
 
             if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
@@ -178,7 +184,7 @@ public class GoogleFileSearchService {
             }
 
             System.out.println("🔨 Creating new File Search Store: " + displayName);
-            String createUrl = BASE_URL + "/fileSearchStores?key=" + apiKey;
+            String createUrl = BASE_URL + "/fileSearchStores?key=" + properties.getKey();
             JSONObject createBody = new JSONObject();
             createBody.put("displayName", displayName);
 
@@ -222,7 +228,7 @@ public class GoogleFileSearchService {
             return null;
         }
 
-        String uploadUrl = UPLOAD_URL + "/" + storeId + ":uploadToFileSearchStore?key=" + apiKey;
+        String uploadUrl = UPLOAD_URL + "/" + storeId + ":uploadToFileSearchStore?key=" + properties.getKey();
 
         try {
             JSONObject metadata = new JSONObject();
@@ -285,7 +291,7 @@ public class GoogleFileSearchService {
             throw new RuntimeException("File Search Store is not available.");
         }
 
-        String uploadUrl = UPLOAD_URL + "/" + storeId + ":uploadToFileSearchStore?key=" + apiKey;
+        String uploadUrl = UPLOAD_URL + "/" + storeId + ":uploadToFileSearchStore?key=" + properties.getKey();
 
         try {
             JSONObject metadata = new JSONObject();
@@ -381,7 +387,7 @@ public class GoogleFileSearchService {
         try {
             System.out.println("🔍 Checking if file exists: " + displayName);
 
-            String url = BASE_URL + "/files?key=" + apiKey;
+            String url = BASE_URL + "/files?key=" + properties.getKey();
             ResponseEntity<String> response = restTemplate.getForEntity(url, String.class);
 
             if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
@@ -425,7 +431,7 @@ public class GoogleFileSearchService {
         if (storeId == null)
             return java.util.Collections.emptyList();
 
-        String url = BASE_URL + "/" + storeId + "/files?key=" + apiKey;
+        String url = BASE_URL + "/" + storeId + "/files?key=" + properties.getKey();
         try {
             ResponseEntity<String> response = restTemplate.getForEntity(url, String.class);
             if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
@@ -461,7 +467,7 @@ public class GoogleFileSearchService {
             return "Erro: Store ID não inicializado.";
         }
 
-        String generateUrl = BASE_URL + "/models/gemini-2.5-flash-lite:generateContent?key=" + apiKey;
+        String generateUrl = BASE_URL + "/models/" + properties.getModel() + ":generateContent?key=" + properties.getKey();
 
         try {
             JSONObject body = new JSONObject();
@@ -553,7 +559,7 @@ public class GoogleFileSearchService {
             return null;
         }
 
-        String url = BASE_URL + "/" + storeId + "?key=" + apiKey;
+        String url = BASE_URL + "/" + storeId + "?key=" + properties.getKey();
 
         try {
             ResponseEntity<String> response = restTemplate.getForEntity(url, String.class);
@@ -593,7 +599,7 @@ public class GoogleFileSearchService {
                 fileName = "files/" + fileName;
             }
 
-            String deleteUrl = BASE_URL + "/" + fileName + "?key=" + apiKey;
+            String deleteUrl = BASE_URL + "/" + fileName + "?key=" + properties.getKey();
 
             restTemplate.delete(deleteUrl);
             System.out.println("🗑️ Arquivo deletado: " + fileName);
@@ -610,7 +616,7 @@ public class GoogleFileSearchService {
             return null;
         }
 
-        String url = BASE_URL + "/" + operationName + "?key=" + apiKey;
+        String url = BASE_URL + "/" + operationName + "?key=" + properties.getKey();
 
         try {
             ResponseEntity<String> response = restTemplate.getForEntity(url, String.class);

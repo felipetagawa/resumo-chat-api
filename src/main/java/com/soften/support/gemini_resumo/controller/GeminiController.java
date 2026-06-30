@@ -2,6 +2,7 @@ package com.soften.support.gemini_resumo.controller;
 
 import com.soften.support.gemini_resumo.service.CalledService;
 import com.soften.support.gemini_resumo.service.GeminiService;
+import com.soften.support.gemini_resumo.service.GeminiIntegrationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -49,10 +50,10 @@ public class GeminiController {
             return ResponseEntity
                     .status(HttpStatus.BAD_REQUEST)
                     .body(Map.of("erro", e.getMessage()));
-        } catch (RuntimeException e) {
+        } catch (GeminiIntegrationException e) {
             return ResponseEntity
-                    .status(HttpStatus.BAD_GATEWAY)
-                    .body(Map.of("erro", e.getMessage()));
+                    .status(e.getHttpStatus())
+                    .body(Map.of("erro", e.getClientMessage()));
         }
     }
 
@@ -68,10 +69,10 @@ public class GeminiController {
             calledService.SaveCall(resumo);
 
             return ResponseEntity.ok(Map.of("summary", resumo));
-        } catch (RuntimeException e) {
+        } catch (GeminiIntegrationException e) {
             return ResponseEntity
-                    .status(HttpStatus.BAD_GATEWAY)
-                    .body(Map.of("erro", e.getMessage()));
+                    .status(e.getHttpStatus())
+                    .body(Map.of("erro", e.getClientMessage()));
         }
     }
 
