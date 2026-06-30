@@ -25,6 +25,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.springframework.test.web.client.ExpectedCount.once;
 import static org.springframework.test.web.client.ExpectedCount.times;
+import static org.springframework.test.web.client.match.MockRestRequestMatchers.content;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withStatus;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
@@ -49,6 +50,44 @@ class GeminiServiceTest {
 
         assertTrue(prompt.contains("INSTRUCOES COMPLEMENTARES DO USUARIO"));
         assertTrue(prompt.contains("foco em concisao"));
+    }
+
+    @Test
+    void generateSummaryShouldIncludeChatAndPromptComplementInFinalPrompt() {
+        RestTemplate restTemplate = new RestTemplate();
+        GeminiService service = newService(restTemplate, defaultProperties());
+        MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();
+
+        server.expect(once(), method(HttpMethod.POST))
+                .andExpect(content().string(org.hamcrest.Matchers.allOf(
+                        org.hamcrest.Matchers.containsString("ATENDIMENTO ANALISADO:\\nchat content"),
+                        org.hamcrest.Matchers.containsString("ATENDIMENTO ANALISADO:\\nchat content\\n\\nCOMPLEMENTO INFORMADO PELO ATENDENTE:\\nextra observation")
+                )))
+                .andRespond(withSuccess(geminiResponse("summary"), MediaType.APPLICATION_JSON));
+
+        String summary = service.generateSummary("chat content", "extra observation");
+
+        assertEquals("summary", summary);
+        server.verify();
+    }
+
+    @Test
+    void generateSummaryShouldOmitComplementSectionWhenPromptComplementIsBlank() {
+        RestTemplate restTemplate = new RestTemplate();
+        GeminiService service = newService(restTemplate, defaultProperties());
+        MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();
+
+        server.expect(once(), method(HttpMethod.POST))
+                .andExpect(content().string(org.hamcrest.Matchers.allOf(
+                        org.hamcrest.Matchers.containsString("ATENDIMENTO ANALISADO:\\nchat content"),
+                        org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("ATENDIMENTO ANALISADO:\\nchat content\\n\\nCOMPLEMENTO INFORMADO PELO ATENDENTE:\\n"))
+                )))
+                .andRespond(withSuccess(geminiResponse("summary"), MediaType.APPLICATION_JSON));
+
+        String summary = service.generateSummary("chat content", "   ");
+
+        assertEquals("summary", summary);
+        server.verify();
     }
 
     @Test

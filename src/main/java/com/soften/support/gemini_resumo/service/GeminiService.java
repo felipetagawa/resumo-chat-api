@@ -105,15 +105,17 @@ public class GeminiService {
                     **Instrução Importante:** Analise toda a conversa do início ao fim.
                     Ignore qualquer mensagem enviada pelo bot chamado "Automatico".
                     Considere apenas o cliente e o atendente humano.
+                    O histórico da conversa é a fonte principal do atendimento.
                     Se houver a seção "COMPLEMENTO INFORMADO PELO ATENDENTE", trate esse conteúdo como contexto adicional confiável fornecido pelo atendente.
-                    Não trate esse complemento como fala do cliente.
+                    Esse complemento pode adicionar ações, conclusões e informações relevantes que não aparecem no chat.
+                    Não trate esse complemento como fala do cliente, não apague o histórico com base nele e não invente fatos para preencher lacunas.
 
                     Escreva **tudo em primeira pessoa**, como se **eu**, técnico, estivesse fazendo o summary.
                     O resultado deve ser explicito, contextual e seguir *exatamente* o formato abaixo:
 
                 **PROBLEMA / DÚVIDA:** [Descreva um resposta que deve SEMPRE ser apenas UMA frase curta, objetiva, com contexto mínimo, mas
                 suficiente para entender o problema real enfrentado pelo cliente. A frase deve deixar claro que se trata
-                de um erro, dúvida, rejeição, falha ou bloqueio. Não invente nada que não esteja na conversa.
+                de um erro, dúvida, rejeição, falha ou bloqueio. Não invente nada que não esteja no histórico ou no complemento do atendente.
                 Identifique o que o cliente estava tentando fazer (somente se isso ajudar a entender o problema),
                 o problema encontrado (erro/dúvida/rejeição/falha), e o que foi impedido por esse problema (opcional).
                 A frase deve seguir a lógica: "O cliente [tentou fazer X] e enfrentou [erro/dúvida/rejeição Y],
