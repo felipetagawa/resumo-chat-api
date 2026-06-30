@@ -8,10 +8,12 @@ import org.json.JSONObject;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.HttpStatusCodeException;
 import org.springframework.web.client.RestTemplate;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 @Service
 public class GeminiService {
@@ -22,6 +24,11 @@ public class GeminiService {
     private final RestTemplate restTemplate = new RestTemplate();
     private final GoogleFileSearchService fileSearchService;
     private static final String GEMINI_URL_BASE = "https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash-lite:generateContent?key=";
+
+    /** HTTP status codes that are transient and worth retrying. */
+    private static final Set<Integer> RETRYABLE_STATUS_CODES = Set.of(429, 500, 503);
+    private static final int MAX_RETRIES = 3;
+    private static final long[] RETRY_DELAYS_MS = { 2_000, 4_000 }; // waits before attempt 2 and 3
 
     public GeminiService(GoogleFileSearchService fileSearchService) {
         this.fileSearchService = fileSearchService;
@@ -36,73 +43,102 @@ public class GeminiService {
         }
     }
 
-    private String generateGenericSummary(String textService, String contextPrompt) {
-        try {
-            String prompt = contextPrompt + "\n\nATENDIMENTO ANALISADO:\n" + textService + "\n";
-
-            JSONObject body = new JSONObject();
-            JSONArray contents = new JSONArray();
-            JSONObject contentItem = new JSONObject();
-            contentItem.put("role", "user");
-            JSONArray parts = new JSONArray();
-            parts.put(new JSONObject().put("text", prompt));
-            contentItem.put("parts", parts);
-            contents.put(contentItem);
-            body.put("contents", contents);
-
-            JSONObject generationConfig = new JSONObject();
-            generationConfig.put("temperature", 0.3);
-            generationConfig.put("maxOutputTokens", 2048);
-            body.put("generationConfig", generationConfig);
-
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_JSON);
-            HttpEntity<String> entity = new HttpEntity<>(body.toString(), headers);
-
-            String url = GEMINI_URL_BASE + apiKey;
-            ResponseEntity<String> response = restTemplate.postForEntity(url, entity, String.class);
-
-            if (!response.getStatusCode().is2xxSuccessful()) {
-                throw new RuntimeException("Erro HTTP: " + response.getStatusCode().value());
-            }
-
-            String respBody = response.getBody();
-            if (respBody == null || respBody.isBlank()) {
-                throw new RuntimeException("Resposta vazia da API Gemini.");
-            }
-
-            JSONObject json = new JSONObject(respBody);
-            String rawText = json.getJSONArray("candidates")
-                    .getJSONObject(0).getJSONObject("content").getJSONArray("parts")
-                    .getJSONObject(0).getString("text");
-
-            String finishReason = json
-                    .getJSONArray("candidates")
-                    .getJSONObject(0)
-                    .optString("finishReason", null);
-
-            if ("MAX_TOKENS".equalsIgnoreCase(finishReason)) {
-                throw new RuntimeException("Erro: A resposta da API foi cortada por exceder o limite de tokens.");
-            }
-
-            String summary = json
-                    .getJSONArray("candidates")
-                    .getJSONObject(0)
-                    .getJSONObject("content")
-                    .getJSONArray("parts")
-                    .getJSONObject(0)
-                    .getString("text");
-
-            if (summary == null || summary.isBlank()) {
-                throw new RuntimeException("Erro: a API não retornou um summary válido.");
-            }
-
-            return summary;
-
-        } catch (Exception e) {
-            e.printStackTrace();
-            throw new RuntimeException("Erro ao chamar a API Gemini: " + e.getMessage(), e);
+    /**
+     * Returns true if the given exception represents a transient HTTP error
+     * that is safe to retry (429 Too Many Requests, 500 Internal Server Error,
+     * 503 Service Unavailable).
+     */
+    private boolean isRetryable(Exception e) {
+        if (e instanceof HttpStatusCodeException httpEx) {
+            return RETRYABLE_STATUS_CODES.contains(httpEx.getStatusCode().value());
         }
+        // Also catch wrapped runtime exceptions that include the status in the message
+        String msg = e.getMessage() != null ? e.getMessage() : "";
+        return msg.contains("503") || msg.contains("429") || msg.contains("500");
+    }
+
+    private String generateGenericSummary(String textService, String contextPrompt) {
+        String prompt = contextPrompt + "\n\nATENDIMENTO ANALISADO:\n" + textService + "\n";
+
+        JSONObject body = new JSONObject();
+        JSONArray contents = new JSONArray();
+        JSONObject contentItem = new JSONObject();
+        contentItem.put("role", "user");
+        JSONArray parts = new JSONArray();
+        parts.put(new JSONObject().put("text", prompt));
+        contentItem.put("parts", parts);
+        contents.put(contentItem);
+        body.put("contents", contents);
+
+        JSONObject generationConfig = new JSONObject();
+        generationConfig.put("temperature", 0.3);
+        generationConfig.put("maxOutputTokens", 2048);
+        body.put("generationConfig", generationConfig);
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        HttpEntity<String> entity = new HttpEntity<>(body.toString(), headers);
+        String url = GEMINI_URL_BASE + apiKey;
+
+        Exception lastException = null;
+        for (int attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+            try {
+                if (attempt > 1) {
+                    long delay = RETRY_DELAYS_MS[Math.min(attempt - 2, RETRY_DELAYS_MS.length - 1)];
+                    System.out.printf("[GeminiService] Tentativa %d/%d após %ds...%n", attempt, MAX_RETRIES, delay / 1000);
+                    Thread.sleep(delay);
+                }
+
+                ResponseEntity<String> response = restTemplate.postForEntity(url, entity, String.class);
+
+                if (!response.getStatusCode().is2xxSuccessful()) {
+                    throw new RuntimeException("Erro HTTP: " + response.getStatusCode().value());
+                }
+
+                String respBody = response.getBody();
+                if (respBody == null || respBody.isBlank()) {
+                    throw new RuntimeException("Resposta vazia da API Gemini.");
+                }
+
+                JSONObject json = new JSONObject(respBody);
+
+                String finishReason = json
+                        .getJSONArray("candidates")
+                        .getJSONObject(0)
+                        .optString("finishReason", null);
+
+                if ("MAX_TOKENS".equalsIgnoreCase(finishReason)) {
+                    throw new RuntimeException("Erro: A resposta da API foi cortada por exceder o limite de tokens.");
+                }
+
+                String summary = json
+                        .getJSONArray("candidates")
+                        .getJSONObject(0)
+                        .getJSONObject("content")
+                        .getJSONArray("parts")
+                        .getJSONObject(0)
+                        .getString("text");
+
+                if (summary == null || summary.isBlank()) {
+                    throw new RuntimeException("Erro: a API não retornou um summary válido.");
+                }
+
+                return summary;
+
+            } catch (InterruptedException ie) {
+                Thread.currentThread().interrupt();
+                throw new RuntimeException("Operação interrompida durante retry.", ie);
+            } catch (Exception e) {
+                lastException = e;
+                if (!isRetryable(e) || attempt == MAX_RETRIES) {
+                    break;
+                }
+                System.out.printf("[GeminiService] Erro transitório na tentativa %d: %s%n", attempt, e.getMessage());
+            }
+        }
+
+        lastException.printStackTrace();
+        throw new RuntimeException("Erro ao chamar a API Gemini: " + lastException.getMessage(), lastException);
     }
 
     public String generateSummary(String textService) {
@@ -232,12 +268,28 @@ public class GeminiService {
         HttpEntity<Map<String, Object>> request = new HttpEntity<>(body, headers);
         String urlFinal = GEMINI_URL_BASE + apiKey;
 
-        try {
-            ResponseEntity<String> response = restTemplate.postForEntity(urlFinal, request, String.class);
-            return extractTextGemini(response.getBody());
-        } catch (Exception e) {
-            throw new RuntimeException("Erro ao enviar requisição para o Gemini: " + e.getMessage());
+        Exception lastException = null;
+        for (int attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+            try {
+                if (attempt > 1) {
+                    long delay = RETRY_DELAYS_MS[Math.min(attempt - 2, RETRY_DELAYS_MS.length - 1)];
+                    System.out.printf("[GeminiService] ask() tentativa %d/%d após %ds...%n", attempt, MAX_RETRIES, delay / 1000);
+                    Thread.sleep(delay);
+                }
+                ResponseEntity<String> response = restTemplate.postForEntity(urlFinal, request, String.class);
+                return extractTextGemini(response.getBody());
+            } catch (InterruptedException ie) {
+                Thread.currentThread().interrupt();
+                throw new RuntimeException("Operação interrompida durante retry.", ie);
+            } catch (Exception e) {
+                lastException = e;
+                if (!isRetryable(e) || attempt == MAX_RETRIES) {
+                    break;
+                }
+                System.out.printf("[GeminiService] ask() erro transitório na tentativa %d: %s%n", attempt, e.getMessage());
+            }
         }
+        throw new RuntimeException("Erro ao enviar requisição para o Gemini: " + lastException.getMessage(), lastException);
     }
 
     private String extractTextGemini(String json) {
