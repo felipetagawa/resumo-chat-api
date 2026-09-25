@@ -1,6 +1,5 @@
 package com.soften.support.gemini_resumo.controller;
 
-import com.soften.support.gemini_resumo.service.CalledService;
 import com.soften.support.gemini_resumo.service.GeminiService;
 import com.soften.support.gemini_resumo.service.GeminiIntegrationException;
 import org.springframework.http.HttpStatus;
@@ -16,11 +15,8 @@ import java.util.Map;
 public class GeminiController {
 
     private final GeminiService geminiService;
-    private final CalledService calledService;
-
-    public GeminiController(GeminiService geminiService, CalledService calledService) {
+    public GeminiController(GeminiService geminiService) {
         this.geminiService = geminiService;
-        this.calledService = calledService;
     }
 
     @PostMapping(value = "/resumir", consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
@@ -43,7 +39,6 @@ public class GeminiController {
         try {
             String normalizedPromptComplement = geminiService.validateAndNormalizePromptComplement(promptComplement);
             String summary = geminiService.generateSummary(texto, normalizedPromptComplement);
-            calledService.SaveCall(summary);
 
             return ResponseEntity.ok(Map.of("summary", summary));
         } catch (IllegalArgumentException e) {
@@ -66,7 +61,6 @@ public class GeminiController {
         }
         try {
             String resumo = geminiService.generateSummary(texto.trim());
-            calledService.SaveCall(resumo);
 
             return ResponseEntity.ok(Map.of("summary", resumo));
         } catch (GeminiIntegrationException e) {

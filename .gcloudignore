@@ -2,6 +2,7 @@
 .gitignore
 HELP.md
 target/
+backup_local.sql
 .mvn/wrapper/maven-wrapper.jar
 !**/src/main/**/target/
 !**/src/test/**/target/

@@ -1,7 +1,6 @@
 package com.soften.support.gemini_resumo.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.soften.support.gemini_resumo.service.CalledService;
 import com.soften.support.gemini_resumo.service.GeminiService;
 import com.soften.support.gemini_resumo.service.GeminiIntegrationException;
 import org.junit.jupiter.api.Test;
@@ -33,9 +32,6 @@ class GeminiControllerTest {
 
     @MockBean
     private GeminiService geminiService;
-
-    @MockBean
-    private CalledService calledService;
 
     @Test
     void resumirJsonWithOnlyTextoShouldKeepOriginalFlow() throws Exception {

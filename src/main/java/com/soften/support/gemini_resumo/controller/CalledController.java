@@ -1,8 +1,8 @@
 package com.soften.support.gemini_resumo.controller;
 
 import com.soften.support.gemini_resumo.models.dtos.*;
-import com.soften.support.gemini_resumo.models.entities.CalledEntity;
 import com.soften.support.gemini_resumo.service.CalledService;
+import com.soften.support.gemini_resumo.service.GeminiIntegrationException;
 import com.soften.support.gemini_resumo.service.GeminiService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -33,12 +33,14 @@ public class CalledController {
             return ResponseEntity
                     .status(HttpStatus.BAD_REQUEST)
                     .body(Map.of("erro", e.getMessage()));
+        } catch (GeminiIntegrationException e) {
+            return ResponseEntity.status(e.getHttpStatus()).body(Map.of("erro", e.getClientMessage()));
         }
     }
 
     @PostMapping("/salvar-resumo")
-    public ResponseEntity<CalledEntity> saveSummary(@RequestBody TextCalledDto dto) {
-        CalledEntity chamado = calledService.SaveCall(dto.texto());
-        return ResponseEntity.ok(chamado);
+    public ResponseEntity<?> saveSummary(@RequestBody TextCalledDto dto) {
+        return ResponseEntity.status(HttpStatus.GONE)
+                .body(Map.of("erro", "Persistência de resumos desativada."));
     }
 }

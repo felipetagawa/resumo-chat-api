@@ -142,6 +142,23 @@ class GeminiServiceTest {
     }
 
     @Test
+    void generateSummaryShouldRetryAfterSingle500AndThenSucceed() {
+        RestTemplate restTemplate = new RestTemplate();
+        GeminiApiProperties properties = defaultProperties();
+        properties.setInitialDelayMillis(1);
+        GeminiService service = newService(restTemplate, properties);
+        MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();
+
+        server.expect(once(), method(HttpMethod.POST))
+                .andRespond(withStatus(HttpStatus.INTERNAL_SERVER_ERROR));
+        server.expect(once(), method(HttpMethod.POST))
+                .andRespond(withSuccess(geminiResponse("summary"), MediaType.APPLICATION_JSON));
+
+        assertEquals("summary", service.generateSummary("chat content"));
+        server.verify();
+    }
+
+    @Test
     void generateSummaryShouldRetryTwiceAfter503AndThenSucceed() {
         RestTemplate restTemplate = new RestTemplate();
         GeminiApiProperties properties = defaultProperties();
