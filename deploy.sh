@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Configuration
-SERVICE_NAME="gemini-resumo-api"
+SERVICE_NAME="gemini-resumo"
 REGION="southamerica-east1"
 
 echo "========================================================"

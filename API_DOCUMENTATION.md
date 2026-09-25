@@ -24,7 +24,8 @@ Responsável por gerar resumos de atendimentos e buscar soluções.
 **`/resumir` (JSON)**
 ```json
 {
-  "texto": "Conteúdo completo do chat do atendimento..."
+  "texto": "Conteúdo completo do chat do atendimento...",
+  "promptComplement": "Campo opcional com observações do técnico para complementar o resumo."
 }
 ```
 
