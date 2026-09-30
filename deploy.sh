@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Configuration
-SERVICE_NAME="gemini-resumo-api"
+SERVICE_NAME="gemini-resumo"
 REGION="southamerica-east1"
 
 echo "========================================================"
@@ -30,6 +30,7 @@ gcloud run deploy "$SERVICE_NAME" \
   --source . \
   --region "$REGION" \
   --platform managed \
+  --max-instances 1 \
   --allow-unauthenticated
 
 echo "========================================================"

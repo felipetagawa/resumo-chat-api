@@ -1,64 +1,60 @@
-# Tutorial: Atualização do Frontend (Extensão Chrome) - RAG com Google File Search
+# Tutorial: integração da extensão Chrome com a API stateless
 
-Este guia descreve as alterações necessárias no código da extensão do Chrome para se integrar com o novo backend "Stateless" (sem banco local) que utiliza o Google File Search.
+A extensão pode gerar um resumo, gerar dicas para o atendimento atual e consultar os manuais no Google File Search. O backend não consulta chamados anteriores nem persiste resumos.
 
-## 1. Visão Geral das Mudanças
+## Resumo do atendimento
 
-O backend agora processa as informações em três etapas distintas:
-1.  **Resumir (`/api/gemini/resumir`)**: Gera o resumo do atendimento. (Mantido)
-2.  **Classificar/Documentar (`/api/gemini/documentacoes`)**: Baseado no resumo, consulta os arquivos de texto (`documentation_data`) no Google File Search para retornar a **Frase Padrão** de classificação do problema.
-3.  **Buscar Soluções Passadas (`/api/gemini/solucoes`)**: Busca em atendimentos anteriores já resolvidos. (Opcional por enquanto, se reativado)
-
-## 2. Atualizar a Chamada de Classificação
-
-No arquivo onde você processa a resposta do resumo (provavelmente `background.js` ou `content.js`), após receber o resumo com sucesso, você deve fazer uma segunda chamada para obter a classificação.
-
-### Código Sugerido (Javascript):
+Envie a conversa atual para `POST /api/gemini/resumir`:
 
 ```javascript
-// Exemplo de função para buscar a classificação após ter o resumo em mãos
-async function buscarClassificacao(resumoTexto) {
-    try {
-        const response = await fetch("https://SEU-BACKEND-URL/api/gemini/documentacoes", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify({ resumo: resumoTexto })
-        });
-
-        if (!response.ok) throw new Error("Erro ao buscar documentação");
-
-        const data = await response.json();
-        
-        // A resposta virá no formato:
-        // { "documentacoesSugeridas": [ { "content": "402 - Rejeicao: XML...", "id": "...", "metadata": {...} } ] }
-        
-        return data.documentacoesSugeridas; // Retorna array de sugestões
-    } catch (error) {
-        console.error("Erro na classificação:", error);
-        return [];
-    }
-}
+const response = await fetch(`${apiBase}/api/gemini/resumir`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ texto: conversaAtual, promptComplement: observacoesOpcionais })
+});
+if (!response.ok) throw new Error((await response.json()).erro);
+const { summary } = await response.json();
 ```
 
-## 3. Exibição no Popup / Interface
+`promptComplement` é opcional e limitado a 2.000 caracteres. Para clientes que enviam texto puro, o endpoint também aceita `Content-Type: text/plain` e retorna o mesmo campo `summary`.
 
-Quando a extensão exibir o resumo gerado, adicione uma seção chamada **"Classificação Sugerida"** ou **"Documentação Oficial"**.
+## Dicas Inteligentes
 
-*   Chame a função `buscarClassificacao(resumo)` passando o texto do resumo.
-*   Mostre o resultado (`content`) que o backend devolveu.
-*   **Nota:** O backend agora retorna a frase exata encontrada nos manuais (ex: "535: ERRO: IE DO DESTINATÁRIO NÃO VINCULADO NO CNPJ"). Isso ajuda o atendente a classificar o chamado corretamente no sistema.
+Envie o atendimento atual para `POST /api/chamado/processar-dica` com `{ "texto": "...", "promptComplement": "..." }`. A resposta inclui `summary` (objeto com `fullSummary`, `problem`, `solution` e `module`), `tips` (lista de próximos passos) e `status`. Este endpoint gera o resumo novamente; não recebe um resumo já pronto. Mostre as ações registradas em `summary.solution` separadamente das sugestões em `tips`.
 
-## 4. (Opcional) Salvar Resumo Manual
+```javascript
+const response = await fetch(`${apiBase}/api/chamado/processar-dica`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ texto: conversaAtual })
+});
+if (!response.ok) throw new Error((await response.json()).erro);
+const { summary, tips } = await response.json();
+```
 
-Se você tiver um botão "Salvar" ou "Aprovar Resumo" no frontend, ele deve chamar o endpoint manual.
-*   **Endpoint:** `/api/gemini/manual`
-*   **Body:** `{ "titulo": "...", "conteudo": "..." }`
-*   **Efeito:** Isso salvará o atendimento como um arquivo no Google File Search, tornando-o disponível para buscas de "Soluções Similares" no futuro.
+Os campos `SimilarTagsFound` e `solutionsAnalyzed` são `0`: não há busca de chamados históricos.
 
----
-**Resumo dos Endpoints Ativos:**
-*   `POST /api/gemini/resumir` -> Gera o texto do resumo.
-*   `POST /api/gemini/documentacoes` -> Retorna a classificação/frase padrão (usa arquivos `part1...5.txt`).
-*   `GET /api/docs/search?query=...` -> Busca livre nos manuais (para tira-dúvidas).
+## Documentação oficial
+
+Para uma busca livre nos manuais, use `GET /api/docs/search?query=...` com um problema ou termo específico. O parâmetro opcional `categoria` tem valor padrão `manuais`. A resposta é uma lista de objetos `{ id, content, metadata }`. Essa busca permanece integrada ao Google File Search.
+
+```javascript
+const url = new URL(`${apiBase}/api/docs/search`);
+url.searchParams.set('query', termo);
+const response = await fetch(url);
+if (!response.ok) throw new Error('Falha ao consultar os manuais');
+const documentos = await response.json();
+```
+
+## Salvamento e compatibilidade
+
+Não há salvamento de resumos no fluxo atual. `POST /api/chamado/salvar-resumo` responde `410 Gone`; remova o botão de aprovação/salvamento ou trate essa resposta em versões antigas da extensão. `POST /api/pre-controls` também responde `410 Gone`; `GET /api/pre-controls` devolve uma página vazia compatível.
+
+## Endpoints ativos para a extensão
+
+| Endpoint | Uso |
+| --- | --- |
+| `GET /api/gemini/ping` | Verificar disponibilidade da aplicação |
+| `POST /api/gemini/resumir` | Gerar resumo da conversa atual |
+| `POST /api/chamado/processar-dica` | Gerar resumo e dicas da conversa atual |
+| `GET /api/docs/search?query=...` | Buscar documentação oficial |
