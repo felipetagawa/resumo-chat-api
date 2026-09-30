@@ -9,3 +9,13 @@ gemini:
     max-retry-after-millis: ${GEMINI_MAX_RETRY_AFTER_MILLIS:5000}
     connect-timeout-millis: ${GEMINI_CONNECT_TIMEOUT_MILLIS:2000}
     read-timeout-millis: ${GEMINI_READ_TIMEOUT_MILLIS:8000}
+
+typesafe:
+  api:
+    key: ${TYPESAFE_API_KEY:}
+    model: ${TYPESAFE_MODEL:jev-latest}
+    system-one-url: ${TYPESAFE_SYSTEM_ONE_URL:https://api.typesafe.ai/v1/systemone}
+    connect-timeout-millis: ${TYPESAFE_CONNECT_TIMEOUT_MILLIS:1000}
+    read-timeout-millis: ${TYPESAFE_READ_TIMEOUT_MILLIS:2500}
+    max-conversation-chars: ${TYPESAFE_MAX_CONVERSATION_CHARS:20000}
+    rate-limit-per-minute: ${TYPESAFE_RATE_LIMIT_PER_MINUTE:120}

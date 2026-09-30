@@ -30,6 +30,7 @@ gcloud run deploy "$SERVICE_NAME" \
   --source . \
   --region "$REGION" \
   --platform managed \
+  --max-instances 1 \
   --allow-unauthenticated
 
 echo "========================================================"

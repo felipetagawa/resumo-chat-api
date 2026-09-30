@@ -21,3 +21,9 @@ Os endpoints `/api/docs` continuam usando Google File Search: `GET /search?query
 ## PreControl
 
 `POST /api/pre-controls` retorna `410 Gone` com `PRE profile persistence is disabled`. `GET /api/pre-controls` mantém um retorno paginado vazio (`200 OK`), pois o backend não guarda registros de PreControl.
+
+## Classificação de Produto (Jev)
+
+`POST /api/classification/product` recebe `{"conversation":"..."}` e classifica o atendimento entre os 55 Produtos oficiais do CRM usando Jev/TypeSafe. A chave fica somente no backend em `TYPESAFE_API_KEY`.
+
+A resposta contém `mode` (`single`, `multiple` ou `uncertain`), até três `suggestions` com `productId`, `product` e `probability`, além de `confidence`, `unclearProbability` e `latencyMs`. A API não persiste a conversa nem a classificação.
