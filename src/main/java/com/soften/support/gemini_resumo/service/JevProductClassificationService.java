@@ -220,6 +220,15 @@ public class JevProductClassificationService {
                 throw invalidResponse("Choice retornado não pertence aos critérios enviados.");
             }
 
+            double maxProbability = validatedProbabilities.values().stream()
+                    .mapToDouble(Double::doubleValue)
+                    .max()
+                    .orElseThrow();
+            double selectedProbability = validatedProbabilities.get(selectedChoice);
+            if (selectedProbability + 1e-9d < maxProbability) {
+                throw invalidResponse("Choice retornado não corresponde à maior probabilidade.");
+            }
+
             double unclearProbability = validatedProbabilities.get(ProductCatalog.UNCLEAR_CHOICE);
 
             List<ProductSuggestionDto> rankedSuggestions = ProductCatalog.all().stream()

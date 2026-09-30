@@ -5,8 +5,10 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.soften.support.gemini_resumo.config.TypeSafeApiProperties;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.client.MockRestServiceServer;
+import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestTemplate;
 
 import java.util.LinkedHashMap;
@@ -18,6 +20,11 @@ import static org.springframework.test.web.client.ExpectedCount.once;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.header;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+import static org.springframework.test.web.client.response.MockRestResponseCreators.withStatus;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
 class JevProductClassificationServiceTest {
@@ -169,6 +176,77 @@ class JevProductClassificationServiceTest {
                 () -> service.classify("alguma conversa")
         );
         server.verify();
+    }
+
+    @Test
+    void inconsistentChoiceIsRejected() throws Exception {
+        String body = jevResponse(
+                "1",
+                0.80d,
+                Map.of(
+                        "44", 0.60d,
+                        "1", 0.30d,
+                        ProductCatalog.UNCLEAR_CHOICE, 0.10d
+                )
+        );
+
+        server.expect(once(), requestTo(properties.getSystemOneUrl()))
+                .andRespond(withSuccess(body, MediaType.APPLICATION_JSON));
+
+        assertThrows(
+                JevIntegrationException.class,
+                () -> service.classify("Cliente fala de nota de serviço.")
+        );
+        server.verify();
+    }
+
+    @Test
+    void upstream4xxBecomesBadGateway() {
+        server.expect(once(), requestTo(properties.getSystemOneUrl()))
+                .andRespond(withStatus(HttpStatus.UNAUTHORIZED));
+
+        JevIntegrationException error = assertThrows(
+                JevIntegrationException.class,
+                () -> service.classify("alguma conversa")
+        );
+
+        assertEquals(HttpStatus.BAD_GATEWAY, error.getHttpStatus());
+        server.verify();
+    }
+
+    @Test
+    void upstream5xxBecomesBadGateway() {
+        server.expect(once(), requestTo(properties.getSystemOneUrl()))
+                .andRespond(withStatus(HttpStatus.SERVICE_UNAVAILABLE));
+
+        JevIntegrationException error = assertThrows(
+                JevIntegrationException.class,
+                () -> service.classify("alguma conversa")
+        );
+
+        assertEquals(HttpStatus.BAD_GATEWAY, error.getHttpStatus());
+        server.verify();
+    }
+
+    @Test
+    void upstreamTimeoutBecomesGatewayTimeout() {
+        RestTemplate timeoutClient = mock(RestTemplate.class);
+        when(timeoutClient.exchange(
+                eq(properties.getSystemOneUrl()),
+                eq(POST),
+                any(),
+                eq(String.class)
+        )).thenThrow(new ResourceAccessException("timeout"));
+
+        JevProductClassificationService timeoutService =
+                new JevProductClassificationService(properties, timeoutClient, objectMapper);
+
+        JevIntegrationException error = assertThrows(
+                JevIntegrationException.class,
+                () -> timeoutService.classify("alguma conversa")
+        );
+
+        assertEquals(HttpStatus.GATEWAY_TIMEOUT, error.getHttpStatus());
     }
 
     @Test

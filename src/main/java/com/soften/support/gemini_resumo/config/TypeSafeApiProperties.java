@@ -7,6 +7,8 @@ import org.springframework.stereotype.Component;
 @ConfigurationProperties(prefix = "typesafe.api")
 public class TypeSafeApiProperties {
 
+    public static final int HARD_MAX_CONVERSATION_CHARS = 20_000;
+
     private String key;
     private String model = "jev-latest";
     private String systemOneUrl = "https://api.typesafe.ai/v1/systemone";
@@ -80,7 +82,10 @@ public class TypeSafeApiProperties {
     }
 
     public int getSafeMaxConversationChars() {
-        return Math.max(maxConversationChars, 1000);
+        return Math.min(
+                Math.max(maxConversationChars, 1000),
+                HARD_MAX_CONVERSATION_CHARS
+        );
     }
 
     public int getSafeRateLimitPerMinute() {
