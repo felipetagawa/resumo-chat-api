@@ -19,10 +19,6 @@ public class SummaryService {
         this.geminiService = geminiService;
     }
 
-    public String generateFormattedSummary(String textService) {
-        return geminiService.generateSummary(textService);
-    }
-
     public String generateFormattedSummary(String textService, String promptComplement) {
         return geminiService.generateSummary(textService, promptComplement);
     }
@@ -46,19 +42,6 @@ public class SummaryService {
                 printsFlag,
                 mood,
                 modulesCalled
-        );
-    }
-
-    public SummaryDto createDtoSummary(String textCall) {
-        String summaryComplete = generateFormattedSummary(textCall);
-        FormatSummary formatSummary = extractFieldsFromSummary(summaryComplete);
-
-        return new SummaryDto(
-                summaryComplete,
-                formatSummary.modules(),
-                formatSummary.problem(),
-                formatSummary.solution(),
-                formatSummary
         );
     }
 

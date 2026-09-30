@@ -1,127 +1,51 @@
-# Frontend Implementation Guide: Smart RAG Features
+# Frontend integration guide (stateless API)
 
-This guide details how to integrate the new "Smart Solution" and "Smart Docs" endpoints into the frontend application.
+The API processes each request from the current conversation. It does not search stored calls or save summaries.
 
-## 1. Feature: Smart Solution Suggestions
+## Generate a summary
 
-**Goal:** Allow agents to find technical solutions based on a problem description.
-
-### UI Recommendation
-*   Add a **"Buscar Solução"** section in the agent's sidebar or tool panel.
-*   **Input:** A text area or input field labeled "Descreva o problema" (e.g., "Erro 503 no gateway").
-*   **Action:** A button "Sugerir Solução".
-
-### API Integration
-
-**Endpoint:** `POST /api/gemini/solucoes`
+`POST /api/gemini/resumir` accepts JSON with `texto` and optional `promptComplement` (up to 2,000 characters). The legacy `complemento` field is also accepted. It also accepts a plain-text body with `Content-Type: text/plain`. Both return `{ "summary": "..." }`.
 
 ```javascript
-async function buscarSolucao(problemaDescricao) {
-  try {
-    const response = await fetch('https://[YOUR_API_URL]/api/gemini/solucoes', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        problema: problemaDescricao
-      })
-    });
-
-    if (!response.ok) throw new Error('Erro na busca');
-
-    const data = await response.json();
-    // data.solucoesSugeridas is an Array of strings
-    return data.solucoesSugeridas;
-    
-  } catch (error) {
-    console.error('Falha ao buscar soluções:', error);
-    return [];
-  }
-}
+const response = await fetch(`${apiBase}/api/gemini/resumir`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ texto: conversaAtual, promptComplement: notasDoAtendente })
+});
+if (!response.ok) throw new Error((await response.json()).erro);
+const { summary } = await response.json();
 ```
 
-### Display Logic
-*   If `solucoesSugeridas` is empty: Show message "Nenhuma solução similar encontrada."
-*   If found: Display each solution in a card or list item.
+## Generate smart tips
 
----
-
-## 2. Feature: Official Documentation Search
-
-**Goal:** Allow agents to search the official knowledge base using natural language.
-
-### UI Recommendation
-*   Add a **"Base de Conhecimento"** search bar.
-*   **Input:** Search input.
-
-### API Integration
-
-**Endpoint:** `GET /api/docs/search?query=...`
+`POST /api/chamado/processar-dica` accepts the same JSON fields. It generates a new summary and suggestions from the current conversation. The response includes `summary`, `problemDetected`, `moduleDetected`, `tips` (an array of strings), `status`, `SimilarTagsFound: 0`, and `solutionsAnalyzed: 0`. The zero counts reflect that stored calls are no longer searched.
 
 ```javascript
-async function buscarDocumentacao(termo) {
-  try {
-    const url = new URL('https://[YOUR_API_URL]/api/docs/search');
-    url.searchParams.append('query', termo);
-
-    const response = await fetch(url);
-    if (!response.ok) throw new Error('Erro na busca');
-
-    const data = await response.json();
-    // data is an Array of Objects: [{ id, content, metadata }]
-    return data;
-
-  } catch (error) {
-    console.error('Falha ao buscar docs:', error);
-    return [];
-  }
-}
+const response = await fetch(`${apiBase}/api/chamado/processar-dica`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ texto: conversaAtual, promptComplement: notasDoAtendente })
+});
+if (!response.ok) throw new Error((await response.json()).erro);
+const { summary, tips } = await response.json();
 ```
 
-## 3. Best Practices (Workflow)
-*   **Do NOT send raw chat logs** to these endpoints. The API is optimized for specific problem descriptions or queries.
-*   **Pre-fill:** If a Summary has already been generated, you can pre-fill the "Solution Search" input with the generated Title.
+Render `tips` as next steps and keep `summary.solution` as the record of actions already performed.
 
----
+## Search official documentation
 
-## 4. Feature: Manual Knowledge Save (Critical)
-
-**Goal:** Ensure only verified solutions are added to the knowledge base (Quality Control).
-**Context:** The API no longer auto-saves summaries. You MUST call this endpoint explicitly.
-
-### UI Recommendation
-*   After the summary is generated (via `/resumir`), show a **Checkbox** or **Button**: `"Aprovar como Solução"`.
-*   This input should only be clickable if the agent is satisfied with the summary.
-
-### API Integration
-
-**Endpoint:** `POST /api/gemini/salvar`
+`GET /api/docs/search?query=...` searches the existing Google File Search manual store. Optional `categoria` defaults to `manuais`. The response is an array of `{ id, content, metadata }`.
 
 ```javascript
-async function aprovarESalvarResumo(titulo, conteudoResumo) {
-  try {
-    const response = await fetch('https://[YOUR_API_URL]/api/gemini/salvar', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        titulo: titulo,
-        conteudo: conteudoResumo
-      })
-    });
-
-    if (!response.ok) throw new Error('Erro ao salvar');
-
-    const data = await response.json();
-    alert('Resumo salvo na base de conhecimento!'); // Feedback pro usuário
-    return true;
-
-  } catch (error) {
-    console.error('Falha ao salvar resumo:', error);
-    alert('Erro ao salvar resumo. Tente novamente.');
-    return false;
-  }
-}
+const url = new URL(`${apiBase}/api/docs/search`);
+url.searchParams.set('query', problemaOuTermo);
+const response = await fetch(url);
+if (!response.ok) throw new Error('Falha na busca de documentação');
+const documents = await response.json();
 ```
+
+Pass a focused problem or search term to the documentation search. Use the full current conversation for summary and tips.
+
+## Persistence
+
+There is no endpoint to approve or save a summary to the knowledge base. `POST /api/chamado/salvar-resumo` returns `410 Gone`. Remove save actions from the frontend flow or handle that response explicitly in older clients.

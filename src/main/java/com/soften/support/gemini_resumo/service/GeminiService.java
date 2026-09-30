@@ -396,7 +396,7 @@ public class GeminiService {
 
     private boolean isRetryableStatus(HttpStatusCode status) {
         int statusCode = status.value();
-        return statusCode == 429 || statusCode == 502 || statusCode == 503 || statusCode == 504;
+        return statusCode == 429 || statusCode == 500 || statusCode == 502 || statusCode == 503 || statusCode == 504;
     }
 
     private boolean isRetryableResourceAccess(ResourceAccessException exception) {
