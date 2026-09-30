@@ -1,10 +1,13 @@
 package com.soften.support.gemini_resumo.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.soften.support.gemini_resumo.config.TypeSafeApiProperties;
 import com.soften.support.gemini_resumo.models.dtos.ProductClassificationResponse;
 import com.soften.support.gemini_resumo.models.dtos.ProductSuggestionDto;
+import com.soften.support.gemini_resumo.service.ClassificationRateLimiter;
 import com.soften.support.gemini_resumo.service.JevIntegrationException;
 import com.soften.support.gemini_resumo.service.JevProductClassificationService;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
@@ -14,12 +17,14 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.List;
+import java.util.Map;
 
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -35,13 +40,51 @@ class ProductClassificationControllerTest {
     @MockBean
     private JevProductClassificationService classificationService;
 
+    @MockBean
+    private ClassificationRateLimiter rateLimiter;
+
+    @MockBean
+    private TypeSafeApiProperties properties;
+
+    @BeforeEach
+    void setUp() {
+        when(rateLimiter.tryAcquire()).thenReturn(true);
+        when(properties.getSafeMaxConversationChars()).thenReturn(20_000);
+    }
+
     @Test
     void blankConversationReturnsBadRequest() throws Exception {
         mockMvc.perform(post("/api/classification/product")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{"conversation":"   "}"))
+                        .content(objectMapper.writeValueAsString(Map.of("conversation", "   "))))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.erro").exists());
+
+        verify(classificationService, never()).classify(anyString());
+    }
+
+    @Test
+    void oversizedConversationReturnsPayloadTooLarge() throws Exception {
+        mockMvc.perform(post("/api/classification/product")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "conversation",
+                                "x".repeat(20_001)
+                        ))))
+                .andExpect(status().isPayloadTooLarge());
+
+        verify(classificationService, never()).classify(anyString());
+    }
+
+    @Test
+    void rateLimitReturnsTooManyRequests() throws Exception {
+        when(rateLimiter.tryAcquire()).thenReturn(false);
+
+        mockMvc.perform(post("/api/classification/product")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("conversation", "chat"))))
+                .andExpect(status().isTooManyRequests())
+                .andExpect(header().string("Retry-After", "60"));
 
         verify(classificationService, never()).classify(anyString());
     }
@@ -64,7 +107,7 @@ class ProductClassificationControllerTest {
 
         mockMvc.perform(post("/api/classification/product")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{"conversation":"chat"}"))
+                        .content(objectMapper.writeValueAsString(Map.of("conversation", "chat"))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.mode").value("multiple"))
                 .andExpect(jsonPath("$.suggestions[0].productId").value("44"))
@@ -83,7 +126,7 @@ class ProductClassificationControllerTest {
 
         mockMvc.perform(post("/api/classification/product")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{"conversation":"chat"}"))
+                        .content(objectMapper.writeValueAsString(Map.of("conversation", "chat"))))
                 .andExpect(status().isBadGateway())
                 .andExpect(jsonPath("$.erro").value("Não foi possível identificar o produto agora. Tente novamente."));
     }

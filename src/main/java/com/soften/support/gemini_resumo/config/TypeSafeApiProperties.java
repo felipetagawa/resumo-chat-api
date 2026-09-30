@@ -12,6 +12,8 @@ public class TypeSafeApiProperties {
     private String systemOneUrl = "https://api.typesafe.ai/v1/systemone";
     private int connectTimeoutMillis = 1000;
     private int readTimeoutMillis = 2500;
+    private int maxConversationChars = 20000;
+    private int rateLimitPerMinute = 120;
 
     public String getKey() {
         return key;
@@ -53,12 +55,36 @@ public class TypeSafeApiProperties {
         this.readTimeoutMillis = readTimeoutMillis;
     }
 
+    public int getMaxConversationChars() {
+        return maxConversationChars;
+    }
+
+    public void setMaxConversationChars(int maxConversationChars) {
+        this.maxConversationChars = maxConversationChars;
+    }
+
+    public int getRateLimitPerMinute() {
+        return rateLimitPerMinute;
+    }
+
+    public void setRateLimitPerMinute(int rateLimitPerMinute) {
+        this.rateLimitPerMinute = rateLimitPerMinute;
+    }
+
     public int getSafeConnectTimeoutMillis() {
         return Math.max(connectTimeoutMillis, 100);
     }
 
     public int getSafeReadTimeoutMillis() {
         return Math.max(readTimeoutMillis, 250);
+    }
+
+    public int getSafeMaxConversationChars() {
+        return Math.max(maxConversationChars, 1000);
+    }
+
+    public int getSafeRateLimitPerMinute() {
+        return Math.max(rateLimitPerMinute, 1);
     }
 
     public boolean isConfigured() {

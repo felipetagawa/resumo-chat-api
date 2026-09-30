@@ -16,10 +16,13 @@ import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestTemplate;
 
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Service
 public class JevProductClassificationService {
@@ -41,6 +44,8 @@ public class JevProductClassificationService {
     private static final double SINGLE_MIN_GAP = 0.25d;
     private static final double UNCLEAR_MIN_PROBABILITY = 0.40d;
     private static final double VERY_LOW_TOP_PROBABILITY = 0.35d;
+    private static final double DISTRIBUTION_MIN_SUM = 0.98d;
+    private static final double DISTRIBUTION_MAX_SUM = 1.02d;
 
     private final TypeSafeApiProperties properties;
     private final RestTemplate restTemplate;
@@ -175,30 +180,62 @@ public class JevProductClassificationService {
             }
 
             double confidence = answer.path("confidence").asDouble(-1d);
-            if (confidence < 0d || confidence > 1d) {
+            if (!Double.isFinite(confidence) || confidence < 0d || confidence > 1d) {
                 throw invalidResponse("Confidence ausente ou inválida.");
             }
 
-            double unclearProbability = probabilities.path(ProductCatalog.UNCLEAR_CHOICE).asDouble(0d);
+            Set<String> expectedChoices = ProductCatalog.all().stream()
+                    .map(ProductCatalog.ProductDefinition::id)
+                    .collect(Collectors.toSet());
+            expectedChoices.add(ProductCatalog.UNCLEAR_CHOICE);
 
-            List<ProductSuggestionDto> suggestions = ProductCatalog.all().stream()
+            if (probabilities.size() != expectedChoices.size()) {
+                throw invalidResponse("Distribuição de probabilidades incompleta.");
+            }
+
+            double distributionSum = 0d;
+            Map<String, Double> validatedProbabilities = new LinkedHashMap<>();
+
+            for (String choiceId : expectedChoices) {
+                JsonNode probabilityNode = probabilities.get(choiceId);
+                if (probabilityNode == null || !probabilityNode.isNumber()) {
+                    throw invalidResponse("Probabilidade ausente para a opção " + choiceId + ".");
+                }
+
+                double probability = probabilityNode.asDouble();
+                if (!Double.isFinite(probability) || probability < 0d || probability > 1d) {
+                    throw invalidResponse("Probabilidade inválida para a opção " + choiceId + ".");
+                }
+
+                validatedProbabilities.put(choiceId, probability);
+                distributionSum += probability;
+            }
+
+            if (distributionSum < DISTRIBUTION_MIN_SUM || distributionSum > DISTRIBUTION_MAX_SUM) {
+                throw invalidResponse("Distribuição de probabilidades não soma aproximadamente 1.");
+            }
+
+            String selectedChoice = answer.path("choice").asText("");
+            if (!expectedChoices.contains(selectedChoice)) {
+                throw invalidResponse("Choice retornado não pertence aos critérios enviados.");
+            }
+
+            double unclearProbability = validatedProbabilities.get(ProductCatalog.UNCLEAR_CHOICE);
+
+            List<ProductSuggestionDto> rankedSuggestions = ProductCatalog.all().stream()
                     .map(product -> new ProductSuggestionDto(
                             product.id(),
                             product.name(),
-                            probabilities.path(product.id()).asDouble(0d)
+                            validatedProbabilities.get(product.id())
                     ))
+                    .filter(suggestion -> suggestion.probability() > 0d)
                     .sorted(Comparator.comparingDouble(ProductSuggestionDto::probability).reversed())
-                    .limit(3)
                     .toList();
 
-            if (suggestions.isEmpty() || suggestions.get(0).probability() <= 0d) {
-                throw invalidResponse("Probabilidades de produto ausentes.");
-            }
+            double top = rankedSuggestions.isEmpty() ? 0d : rankedSuggestions.get(0).probability();
+            double second = rankedSuggestions.size() > 1 ? rankedSuggestions.get(1).probability() : 0d;
 
-            double top = suggestions.get(0).probability();
-            double second = suggestions.size() > 1 ? suggestions.get(1).probability() : 0d;
             String mode;
-
             if (unclearProbability >= UNCLEAR_MIN_PROBABILITY || top < VERY_LOW_TOP_PROBABILITY) {
                 mode = "uncertain";
             } else if (top >= SINGLE_MIN_PROBABILITY && (top - second) >= SINGLE_MIN_GAP) {
@@ -207,9 +244,16 @@ public class JevProductClassificationService {
                 mode = "multiple";
             }
 
+            List<ProductSuggestionDto> suggestions = new ArrayList<>();
+            if (mode.equals("single") && !rankedSuggestions.isEmpty()) {
+                suggestions.add(rankedSuggestions.get(0));
+            } else {
+                suggestions.addAll(rankedSuggestions.stream().limit(3).toList());
+            }
+
             return new ProductClassificationResponse(
                     mode,
-                    suggestions,
+                    List.copyOf(suggestions),
                     confidence,
                     unclearProbability,
                     latencyMs
