@@ -4,6 +4,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.soften.support.gemini_resumo.config.GeminiApiProperties;
 import jakarta.annotation.PostConstruct;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import org.slf4j.Logger;
@@ -34,12 +36,21 @@ public class GeminiService {
 
     private final GeminiApiProperties properties;
     private final RestTemplate restTemplate;
+    private final RestTemplate interactiveTemplate;
     private final GoogleFileSearchService fileSearchService;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     public GeminiService(GeminiApiProperties properties,
                          RestTemplate geminiRestTemplate,
                          GoogleFileSearchService fileSearchService) {
+        this(properties, geminiRestTemplate, fileSearchService, geminiRestTemplate);
+    }
+    @Autowired
+    public GeminiService(GeminiApiProperties properties,
+            @Qualifier("geminiRestTemplate") RestTemplate geminiRestTemplate,
+            GoogleFileSearchService fileSearchService,
+            @Qualifier("smartReplyRestTemplate") RestTemplate interactiveTemplate) {
+        this.interactiveTemplate = interactiveTemplate;
         this.properties = properties;
         this.restTemplate = geminiRestTemplate;
         this.fileSearchService = fileSearchService;
@@ -202,6 +213,12 @@ public class GeminiService {
         return extractTextGemini(response);
     }
 
+    public String generateInteractive(String policy, String data) {
+        JSONObject body = buildGenerateContentBody(policy + "\n\nDADOS DO ATENDIMENTO (JSON):\n" + data);
+        body.getJSONObject("generationConfig").put("maxOutputTokens", 512);
+        return extractTextGemini(executeGenerateContent(body, interactiveTemplate, Math.min(2, properties.getSafeMaxAttempts()), true));
+    }
+
     private String extractTextGemini(String json) {
         try {
             JsonNode node = objectMapper.readTree(json);
@@ -238,8 +255,10 @@ public class GeminiService {
     }
 
     private String executeGenerateContent(JSONObject body) {
+        return executeGenerateContent(body, restTemplate, properties.getSafeMaxAttempts(), false);
+    }
+    private String executeGenerateContent(JSONObject body, RestTemplate client, int maxAttempts, boolean interactive) {
         Instant overallStart = Instant.now();
-        int maxAttempts = properties.getSafeMaxAttempts();
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
         HttpEntity<String> entity = new HttpEntity<>(body.toString(), headers);
@@ -252,7 +271,7 @@ public class GeminiService {
             try {
                 log.info("Chamando Gemini. model={}, attempt={}/{}",
                         properties.getModel(), attempt, maxAttempts);
-                ResponseEntity<String> response = restTemplate.postForEntity(buildGenerateContentUrl(), entity, String.class);
+                ResponseEntity<String> response = client.postForEntity(buildGenerateContentUrl(), entity, String.class);
                 long attemptMillis = Duration.between(attemptStart, Instant.now()).toMillis();
                 log.info("Resposta Gemini recebida com sucesso. model={}, attempt={}, status={}, durationMs={}",
                         properties.getModel(), attempt, response.getStatusCode().value(), attemptMillis);
@@ -268,7 +287,7 @@ public class GeminiService {
                     long delayMillis = resolveDelayMillis(attempt, status, e.getResponseHeaders());
                     log.info("Agendando nova tentativa Gemini. model={}, nextAttempt={}, delayMs={}",
                             properties.getModel(), attempt + 1, delayMillis);
-                    sleepBeforeRetry(delayMillis);
+                    sleepBeforeRetry(interactive ? Math.min(delayMillis, 250L) : delayMillis);
                     continue;
                 }
 
@@ -300,7 +319,7 @@ public class GeminiService {
                     long delayMillis = resolveDelayMillis(attempt, null, null);
                     log.info("Agendando nova tentativa Gemini apos falha de conectividade. model={}, nextAttempt={}, delayMs={}",
                             properties.getModel(), attempt + 1, delayMillis);
-                    sleepBeforeRetry(delayMillis);
+                    sleepBeforeRetry(interactive ? Math.min(delayMillis, 250L) : delayMillis);
                     continue;
                 }
 
