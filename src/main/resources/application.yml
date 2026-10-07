@@ -19,3 +19,6 @@ typesafe:
     read-timeout-millis: ${TYPESAFE_READ_TIMEOUT_MILLIS:2500}
     max-conversation-chars: ${TYPESAFE_MAX_CONVERSATION_CHARS:20000}
     rate-limit-per-minute: ${TYPESAFE_RATE_LIMIT_PER_MINUTE:120}
+
+smart-reply:
+  rate-limit-per-minute: ${SMART_REPLY_RATE_LIMIT_PER_MINUTE:30}
