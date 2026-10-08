@@ -1,9 +1,13 @@
 import {readFile, writeFile, mkdir} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
 import path from 'node:path';
+import {performance} from 'node:perf_hooks';
 import {profiles, pricing, planRun, profileFor, validatePlanApproval} from './profiles.mjs';
 
-export async function main(args, api) {
+export async function main(args, api, io = {}) {
+  const persist = io.writeFile ?? writeFile;
+  const createDirectory = io.mkdir ?? mkdir;
+  const logDiagnostic = io.logDiagnostic ?? (diagnostic => console.error(JSON.stringify(diagnostic)));
   const valueFlags = new Set(['--bundle', '--profiles', '--output', '--sample', '--max-calls', '--budget-usd', '--max-output-tokens', '--pricing-period']);
   const switchFlags = new Set(['--paid', '--dry-run', '--diagnostic']);
   const values = {};
@@ -41,26 +45,41 @@ export async function main(args, api) {
   // Resolve final output within ignored target; prevent accidentally versioning results or replacing sources.
   const targetRoot = path.resolve('target/smart-reply-eval') + path.sep;
   if (!path.resolve(output).startsWith(targetRoot) || !output.endsWith('.json')) throw Error('Results must be JSON within target/smart-reply-eval.');
-  await mkdir(path.dirname(output), {recursive: true});
-  await writeFile(output, '{}\n', {flag: 'wx'});
   const report = {schemaVersion: 2, startedAt: new Date().toISOString(), runtime: process.version,
     bundleSha256: createHash('sha256').update(bytes).digest('hex'), plan, pricingSource: 'https://ai.google.dev/gemini-api/docs/pricing',
-    pricingCheckedAt: '2026-10-08', pricing, evaluatorLlmCalls: 0, verifiedModels: [], results: [],
+    pricingCheckedAt: '2026-10-08', pricing, evaluatorLlmCalls: 0, verifiedModels: [], preflightDiagnostics: [], results: [],
     httpCalls: 0, issuedReservationUsd: 0, complete: false, stopReason: null};
   let perAttemptReservation = 0;
   const send = async request => {
-    if (report.httpCalls >= plan.maxHttpCalls) throw {safeCode: 'CALL_LIMIT', retryable: false};
+    if (report.httpCalls >= plan.maxHttpCalls) throw {safeCode: 'CALL_LIMIT', retryable: false,
+      ...(request.method === 'GET' ? {beforeTransport: true} : {})};
     if (request.method === 'POST') {
       if (report.issuedReservationUsd + perAttemptReservation > plan.budgetUsd) throw {safeCode: 'BUDGET_LIMIT', retryable: false};
       report.issuedReservationUsd += perAttemptReservation;
     }
     report.httpCalls++;
     // Persist before sending, so a killed process does not hide issued requests.
-    await writeFile(output, JSON.stringify(report, null, 2) + '\n');
+    try {
+      await persist(output, JSON.stringify(report, null, 2) + '\n');
+    } catch (error) {
+      if (request.method === 'GET') throw {safeCode: 'PERSISTENCE_FAILED', beforeTransport: true};
+      throw error;
+    }
     return api.transport(request);
   };
+  const persistenceStarted = performance.now();
   try {
-    report.verifiedModels = await api.preflight(bundle, models, process.env.GEMINI_API_KEY, send, plan.maxOutputTokens);
+    await createDirectory(path.dirname(output), {recursive: true});
+    await persist(output, '{}\n', {flag: 'wx'});
+  } catch {
+    logDiagnostic({preflightDiagnostics: [{model: models[0], stage: 'preflight_persistence',
+      durationMs: performance.now() - persistenceStarted, httpStatus: null,
+      errorCode: 'PERSISTENCE_FAILED', beforeTransport: true, incompatibleResponse: false}]});
+    throw Error('Preflight persistence failed; no transport invoked.');
+  }
+  try {
+    report.verifiedModels = await api.preflight(bundle, models, process.env.GEMINI_API_KEY, send, plan.maxOutputTokens,
+      diagnostic => report.preflightDiagnostics.push(diagnostic));
     for (const [index, caseId] of plan.caseIds.entries()) {
       const scenario = bundle.cases.find(c => c.id === caseId);
       const ordered = [...plan.profileIds.slice(index % plan.profileIds.length), ...plan.profileIds.slice(0, index % plan.profileIds.length)];
@@ -71,7 +90,7 @@ export async function main(args, api) {
           {maxOutputTokens: plan.maxOutputTokens, period: plan.period});
         report.results.push(row);
         report.summary = api.summary(report.results);
-        await writeFile(output, JSON.stringify(report, null, 2) + '\n');
+        await persist(output, JSON.stringify(report, null, 2) + '\n');
         console.log(`${caseId}: ${id} success=${row.success} complete=${row.checks.complete} attempts=${row.attempts.length}`);
         const last = row.attempts.at(-1);
         const overrun = row.attempts.some(a => (a.inputTokens ?? 0) > reservation.inputTokenBound
@@ -88,6 +107,16 @@ export async function main(args, api) {
     report.finishedAt = new Date().toISOString();
     report.summary = api.summary(report.results);
     if (!report.complete && !report.stopReason) report.stopReason = 'PREFLIGHT_OR_EXECUTION_FAILED';
-    await writeFile(output, JSON.stringify(report, null, 2) + '\n');
+    const started = performance.now();
+    try {
+      await persist(output, JSON.stringify(report, null, 2) + '\n');
+    } catch {
+      if (report.results.length === 0) {
+        logDiagnostic({preflightDiagnostics: report.preflightDiagnostics,
+          persistenceDiagnostic: {stage: 'preflight_report_persistence', durationMs: performance.now() - started,
+            errorCode: 'PERSISTENCE_FAILED'}});
+      }
+      throw Error('Evaluation report persistence failed.');
+    }
   }
 }

@@ -5,6 +5,7 @@ import path from 'node:path';
 
 import {pricing, profileFor, requestBody, projectCost} from './profiles.mjs';
 import {main} from './runner.mjs';
+import {preflightErrorCode} from './preflight-diagnostics.mjs';
 export const rates = Object.fromEntries(Object.entries(pricing).map(([id, rate]) => [id, rate.promo]));
 const transient = new Set([429, 500, 502, 503, 504]);
 
@@ -90,12 +91,14 @@ export function usageAndCost(usage, model, period = 'promo') {
 export function transport({url, method, body, key, timing, deadlineMs}) {
   return new Promise((resolve, reject) => {
     const payload = body ? JSON.stringify(body) : undefined;
+    let responseStatus;
     const req = httpsRequest(url, {method, agent: false,
       headers: {'Content-Type': 'application/json', 'x-goog-api-key': key}}, res => {
+      responseStatus = res.statusCode;
       let data = '';
       res.setEncoding('utf8');
       res.on('data', chunk => {data += chunk;});
-      res.on('error', () => req.destroy(Object.assign(Error('Read failed'), {safeCode: 'READ_FAILED'})));
+      res.on('error', () => req.destroy(Object.assign(Error('Read failed'), {safeCode: 'READ_FAILED', httpStatus: res.statusCode})));
       res.on('end', () => {
         let parsed;
         // Never save an external error body; it can echo sensitive information.
@@ -114,7 +117,8 @@ export function transport({url, method, body, key, timing, deadlineMs}) {
       req.setTimeout(timing.readTimeoutMs, () => req.destroy(Object.assign(Error('Read timeout'),
         {safeCode: 'READ_TIMEOUT', retryable: true})));
     }));
-    req.on('error', e => reject({safeCode: e.safeCode ?? 'NETWORK_ERROR',
+    req.on('error', e => reject({...(method === 'GET'
+      ? {diagnosticCode: preflightErrorCode(e), httpStatus: responseStatus} : {}), safeCode: e.safeCode ?? 'NETWORK_ERROR',
       retryable: e.retryable ?? e.code === 'ECONNREFUSED'}));
     req.on('close', () => {clearTimeout(connectTimer); clearTimeout(deadlineTimer);});
     if (payload) req.write(payload);
@@ -122,16 +126,41 @@ export function transport({url, method, body, key, timing, deadlineMs}) {
   });
 }
 
-export async function preflight(bundle, models, key, send = transport, requiredOutputTokens = 512) {
+export async function preflight(bundle, models, key, send = transport, requiredOutputTokens = 512, recordDiagnostic = () => {}) {
   const verified = [];
   for (const model of models) {
-    const response = await send({url: `${bundle.baseUrl}/${model}`, method: 'GET', key,
-      timing: bundle.transport, deadlineMs: bundle.transport.extensionTimeoutMs});
-    if (response.status !== 200 || response.body?.name !== `models/${model}`
-        || !response.body?.supportedGenerationMethods?.includes('generateContent')
-        || !Number.isFinite(response.body.outputTokenLimit) || response.body.outputTokenLimit < requiredOutputTokens) {
-      throw Error(`Model unavailable or incompatible on v1: ${model}; HTTP ${response.status}. No fallback or generation attempted.`);
+    const started = performance.now();
+    let response;
+    try {
+      response = await send({url: `${bundle.baseUrl}/${model}`, method: 'GET', key,
+        timing: bundle.transport, deadlineMs: bundle.transport.extensionTimeoutMs});
+    } catch (error) {
+      const beforeTransport = error?.beforeTransport === true;
+      const errorCode = preflightErrorCode(error);
+      const httpStatus = Number.isInteger(error?.httpStatus) && error.httpStatus >= 100 && error.httpStatus <= 599
+        ? error.httpStatus : null;
+      recordDiagnostic({model, stage: beforeTransport
+        ? errorCode === 'PERSISTENCE_FAILED' ? 'preflight_persistence' : 'preflight_guard' : 'preflight_transport',
+        durationMs: performance.now() - started, httpStatus, errorCode,
+        beforeTransport, incompatibleResponse: false});
+      throw Error('Model unavailable during preflight; inspect sanitized diagnostics.');
     }
+    const status = Number.isInteger(response?.status) && response.status >= 100 && response.status <= 599
+      ? response.status : null;
+    const body = response?.body;
+    let errorCode = null;
+    if (status !== 200) errorCode = 'HTTP_ERROR';
+    else if (body === null) errorCode = 'RESPONSE_INVALID_JSON';
+    else if (!body || typeof body !== 'object' || body.name !== `models/${model}`
+        || !Array.isArray(body.supportedGenerationMethods)
+        || !Number.isFinite(body.outputTokenLimit)) errorCode = 'RESPONSE_STRUCTURE_INCOMPATIBLE';
+    else if (!body.supportedGenerationMethods.includes('generateContent')
+        || body.outputTokenLimit < requiredOutputTokens) errorCode = 'MODEL_CAPABILITY_INCOMPATIBLE';
+    recordDiagnostic({model, stage: errorCode === 'HTTP_ERROR' ? 'preflight_http'
+      : errorCode ? 'preflight_compatibility' : 'preflight_complete',
+      durationMs: performance.now() - started, httpStatus: status, errorCode,
+      beforeTransport: false, incompatibleResponse: status === 200 && errorCode !== null});
+    if (errorCode) throw Error('Model unavailable or incompatible on v1. No fallback or generation attempted.');
     verified.push({name: response.body.name, version: response.body.version ?? null,
       supportedGenerationMethods: response.body.supportedGenerationMethods,
       outputTokenLimit: response.body.outputTokenLimit, inputTokenLimit: response.body.inputTokenLimit ?? null});
