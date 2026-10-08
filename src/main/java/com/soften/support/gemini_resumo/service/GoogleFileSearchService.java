@@ -455,14 +455,18 @@ public class GoogleFileSearchService {
     }
 
     public String searchClassification(String query, String systemInstruction) {
-        return simpleSearch(query, systemInstruction, classificationStoreId);
+        return simpleSearch(query, systemInstruction, classificationStoreId, "classification");
     }
 
     public String searchManuals(String query, String systemInstruction) {
-        return simpleSearch(query, systemInstruction, manualsStoreId);
+        return simpleSearch(query, systemInstruction, manualsStoreId, "docs");
     }
 
     public String simpleSearch(String query, String systemInstruction, String storeId) {
+        return simpleSearch(query, systemInstruction, storeId, "file_search");
+    }
+
+    private String simpleSearch(String query, String systemInstruction, String storeId, String feature) {
         if (storeId == null) {
             return "Erro: Store ID não inicializado.";
         }
@@ -501,7 +505,7 @@ public class GoogleFileSearchService {
             headers.setContentType(MediaType.APPLICATION_JSON);
             HttpEntity<String> entity = new HttpEntity<>(body.toString(), headers);
 
-            ResponseEntity<String> response = restTemplate.postForEntity(generateUrl, entity, String.class);
+            ResponseEntity<String> response = generateWithUsage(generateUrl, entity, feature);
 
             if (response.getStatusCode().is2xxSuccessful()) {
                 String responseBody = response.getBody();
@@ -550,6 +554,24 @@ public class GoogleFileSearchService {
         } catch (Exception e) {
             e.printStackTrace();
             return "Error searching: " + e.getMessage();
+        }
+    }
+
+    private ResponseEntity<String> generateWithUsage(String url, HttpEntity<String> entity, String feature) {
+        long start = System.nanoTime();
+        try {
+            ResponseEntity<String> response = restTemplate.postForEntity(url, entity, String.class);
+            GeminiUsage.log(properties.getModel(), feature, response.getBody(),
+                    (System.nanoTime() - start) / 1_000_000, "success", 1);
+            return response;
+        } catch (RuntimeException e) {
+            String body = e instanceof org.springframework.web.client.HttpStatusCodeException http
+                    ? http.getResponseBodyAsString() : null;
+            boolean timeout = e instanceof org.springframework.web.client.ResourceAccessException resource
+                    && resource.getMostSpecificCause() instanceof java.net.SocketTimeoutException;
+            GeminiUsage.log(properties.getModel(), feature, body,
+                    (System.nanoTime() - start) / 1_000_000, timeout ? "timeout" : "error", 1);
+            throw e;
         }
     }
 

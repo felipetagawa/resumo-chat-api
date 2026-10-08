@@ -1,0 +1,6 @@
+configuration_id,input_tokens_mean,visible_tokens_mean,thinking_tokens_mean,billed_output_tokens_mean,usd_mean_promo,usd_mean_standard,usd_per_100_promo,usd_per_100_standard,usd_per_1000_promo,usd_per_1000_standard,usd_month_5_per_day_promo,usd_month_10_per_day_promo,usd_month_20_per_day_promo,usd_month_5_per_day_standard,usd_month_10_per_day_standard,usd_month_20_per_day_standard,technicians,latency_mean_ms,latency_median_ms,latency_p95_ms,error_rate,timeout_rate,incomplete_rate,max_tokens_rate,parser_mismatch_rate,ready,adjust,generic,incorrect,critical_failures,unknown_cost_attempts,cost_per_ready,notes
+gemini-2.5-flash-lite,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+gemini-3.5-flash-lite-minimal,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+gemini-3.7-flash-low,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+gemini-3.8-flash-low,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+gemini-3.8-flash-medium,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,

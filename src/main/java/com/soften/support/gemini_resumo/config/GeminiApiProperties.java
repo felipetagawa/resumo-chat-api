@@ -9,6 +9,29 @@ import static java.lang.Double.isFinite;
 @ConfigurationProperties(prefix = "gemini.api")
 public class GeminiApiProperties {
 
+    private String smartReplyModel = "";
+    private boolean smartReplyPremiumEnabled = false;
+    private int smartReplyReadTimeoutMillis = 4000;
+
+    public String getSmartReplyModel() { return smartReplyModel; }
+    public void setSmartReplyModel(String value) { smartReplyModel = value; }
+    public boolean isSmartReplyPremiumEnabled() { return smartReplyPremiumEnabled; }
+    public void setSmartReplyPremiumEnabled(boolean value) { smartReplyPremiumEnabled = value; }
+    public int getSmartReplyReadTimeoutMillis() { return smartReplyReadTimeoutMillis; }
+    public void setSmartReplyReadTimeoutMillis(int value) { smartReplyReadTimeoutMillis = value; }
+    public int getSafeSmartReplyReadTimeoutMillis() {
+        // Two attempts + connections + backoff remain below the extension's 15 s deadline.
+        return Math.max(1000, Math.min(smartReplyReadTimeoutMillis, 5000));
+    }
+    public String resolveSmartReplyModel() {
+        String configured = smartReplyModel == null ? "" : smartReplyModel.trim();
+        if (configured.isEmpty() || configured.equals(model)) return model;
+        if (!configured.equals("gemini-2.5-flash-lite") && !configured.equals("gemini-3.8-flash")) {
+            throw new IllegalStateException("Unsupported Smart Reply model configuration.");
+        }
+        return configured.equals("gemini-3.8-flash") && !smartReplyPremiumEnabled ? model : configured;
+    }
+
     private String key;
     private String model = "gemini-2.5-flash-lite";
     private String generateContentBaseUrl = "https://generativelanguage.googleapis.com/v1/models";

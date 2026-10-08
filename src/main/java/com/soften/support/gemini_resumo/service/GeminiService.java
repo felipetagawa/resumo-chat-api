@@ -58,6 +58,7 @@ public class GeminiService {
 
     @PostConstruct
     public void init() {
+        properties.resolveSmartReplyModel();
         if (properties.getKey() == null || properties.getKey().isBlank()) {
             throw new IllegalStateException(
                     "Chave da Gemini não encontrada. Defina a variável de ambiente GEMINI_API_KEY " +
@@ -68,7 +69,7 @@ public class GeminiService {
     private String generateGenericSummary(String textService, String promptComplement, String contextPrompt) {
         String prompt = contextPrompt + "\n\n" + buildSummaryInput(textService, promptComplement);
         JSONObject body = buildGenerateContentBody(prompt);
-        String respBody = executeGenerateContent(body);
+        String respBody = executeGenerateContent(body, restTemplate, properties.getSafeMaxAttempts(), false, properties.getModel(), "report");
         return extractSummary(respBody);
     }
 
@@ -209,14 +210,42 @@ public class GeminiService {
 
     public String ask(String prompt) {
         JSONObject body = buildGenerateContentBody(prompt);
-        String response = executeGenerateContent(body);
+        String response = executeGenerateContent(body, restTemplate, properties.getSafeMaxAttempts(), false, properties.getModel(), "ask");
         return extractTextGemini(response);
     }
 
     public String generateInteractive(String policy, String data) {
+        String model = properties.resolveSmartReplyModel();
         JSONObject body = buildGenerateContentBody(policy + "\n\nDADOS DO ATENDIMENTO (JSON):\n" + data);
         body.getJSONObject("generationConfig").put("maxOutputTokens", 512);
-        return extractTextGemini(executeGenerateContent(body, interactiveTemplate, Math.min(2, properties.getSafeMaxAttempts()), true));
+        if ("gemini-3.8-flash".equals(model)) {
+            JSONObject config = body.getJSONObject("generationConfig");
+            config.remove("temperature");
+            config.put("thinkingConfig", new JSONObject().put("thinkingLevel", "LOW"));
+        }
+        return extractInteractiveText(executeGenerateContent(body, interactiveTemplate,
+                Math.min(2, properties.getSafeMaxAttempts()), true, model, "smart_reply"));
+    }
+
+    private String extractInteractiveText(String json) {
+        try {
+            JsonNode candidate = objectMapper.readTree(json).path("candidates").path(0);
+            String finish = candidate.path("finishReason").asText("");
+            if (!finish.isEmpty() && !"STOP".equals(finish)) {
+                throw new IllegalArgumentException("Incomplete or blocked Gemini response.");
+            }
+            StringBuilder text = new StringBuilder();
+            for (JsonNode part : candidate.path("content").path("parts")) {
+                if (!part.path("thought").asBoolean(false) && part.path("text").isTextual()) {
+                    text.append(part.path("text").asText());
+                }
+            }
+            if (text.toString().isBlank()) throw new IllegalArgumentException("Empty Gemini response.");
+            return text.toString();
+        } catch (Exception e) {
+            throw new GeminiIntegrationException(REQUEST_FAILED_MESSAGE,
+                    HttpStatus.INTERNAL_SERVER_ERROR, "Invalid Smart Reply response.", e);
+        }
     }
 
     private String extractTextGemini(String json) {
@@ -254,39 +283,45 @@ public class GeminiService {
         return body;
     }
 
-    private String executeGenerateContent(JSONObject body) {
-        return executeGenerateContent(body, restTemplate, properties.getSafeMaxAttempts(), false);
-    }
-    private String executeGenerateContent(JSONObject body, RestTemplate client, int maxAttempts, boolean interactive) {
+    private String executeGenerateContent(JSONObject body, RestTemplate client, int maxAttempts,
+            boolean interactive, String model, String feature) {
         Instant overallStart = Instant.now();
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
         HttpEntity<String> entity = new HttpEntity<>(body.toString(), headers);
 
         log.info("Iniciando chamada Gemini generateContent. model={}, maxAttempts={}",
-                properties.getModel(), maxAttempts);
+                model, maxAttempts);
 
         for (int attempt = 1; attempt <= maxAttempts; attempt++) {
             Instant attemptStart = Instant.now();
+            String responseBody = null;
             try {
                 log.info("Chamando Gemini. model={}, attempt={}/{}",
-                        properties.getModel(), attempt, maxAttempts);
-                ResponseEntity<String> response = client.postForEntity(buildGenerateContentUrl(), entity, String.class);
+                        model, attempt, maxAttempts);
+                ResponseEntity<String> response = client.postForEntity(buildGenerateContentUrl(model), entity, String.class);
                 long attemptMillis = Duration.between(attemptStart, Instant.now()).toMillis();
                 log.info("Resposta Gemini recebida com sucesso. model={}, attempt={}, status={}, durationMs={}",
-                        properties.getModel(), attempt, response.getStatusCode().value(), attemptMillis);
-                return requireResponseBody(response.getBody());
+                        model, attempt, response.getStatusCode().value(), attemptMillis);
+                responseBody = requireResponseBody(response.getBody());
+                if (interactive) extractInteractiveText(responseBody);
+                else if ("report".equals(feature)) extractSummary(responseBody);
+                else if ("ask".equals(feature)) extractTextGemini(responseBody);
+                GeminiUsage.log(model, feature, responseBody, attemptMillis, "success", attempt);
+                return responseBody;
             } catch (HttpStatusCodeException e) {
+                GeminiUsage.log(model, feature, e.getResponseBodyAsString(),
+                        Duration.between(attemptStart, Instant.now()).toMillis(), "error", attempt);
                 HttpStatusCode status = e.getStatusCode();
                 long attemptMillis = Duration.between(attemptStart, Instant.now()).toMillis();
                 boolean retryable = isRetryableStatus(status);
                 log.warn("Falha HTTP ao chamar Gemini. model={}, attempt={}, status={}, retryable={}, durationMs={}",
-                        properties.getModel(), attempt, status.value(), retryable, attemptMillis);
+                        model, attempt, status.value(), retryable, attemptMillis);
 
                 if (retryable && attempt < maxAttempts) {
                     long delayMillis = resolveDelayMillis(attempt, status, e.getResponseHeaders());
                     log.info("Agendando nova tentativa Gemini. model={}, nextAttempt={}, delayMs={}",
-                            properties.getModel(), attempt + 1, delayMillis);
+                            model, attempt + 1, delayMillis);
                     sleepBeforeRetry(interactive ? Math.min(delayMillis, 250L) : delayMillis);
                     continue;
                 }
@@ -294,7 +329,7 @@ public class GeminiService {
                 long totalMillis = Duration.between(overallStart, Instant.now()).toMillis();
                 if (retryable) {
                     log.error("Tentativas esgotadas ao chamar Gemini. model={}, attempts={}, lastStatus={}, totalDurationMs={}",
-                            properties.getModel(), attempt, status.value(), totalMillis);
+                            model, attempt, status.value(), totalMillis);
                     throw new GeminiIntegrationException(
                             TEMPORARY_UNAVAILABLE_MESSAGE,
                             HttpStatus.BAD_GATEWAY,
@@ -303,7 +338,7 @@ public class GeminiService {
                 }
 
                 log.error("Falha nao transitoria ao chamar Gemini. model={}, status={}, totalDurationMs={}",
-                        properties.getModel(), status.value(), totalMillis);
+                        model, status.value(), totalMillis);
                 throw new GeminiIntegrationException(
                         REQUEST_FAILED_MESSAGE,
                         HttpStatus.INTERNAL_SERVER_ERROR,
@@ -311,14 +346,16 @@ public class GeminiService {
                         e);
             } catch (ResourceAccessException e) {
                 long attemptMillis = Duration.between(attemptStart, Instant.now()).toMillis();
+                GeminiUsage.log(model, feature, null, attemptMillis,
+                        e.getMostSpecificCause() instanceof SocketTimeoutException ? "timeout" : "error", attempt);
                 boolean retryable = isRetryableResourceAccess(e);
                 log.warn("Falha de conectividade ao chamar Gemini. model={}, attempt={}, retryable={}, durationMs={}, errorType={}",
-                        properties.getModel(), attempt, retryable, attemptMillis, rootCauseName(e));
+                        model, attempt, retryable, attemptMillis, rootCauseName(e));
 
                 if (retryable && attempt < maxAttempts) {
                     long delayMillis = resolveDelayMillis(attempt, null, null);
                     log.info("Agendando nova tentativa Gemini apos falha de conectividade. model={}, nextAttempt={}, delayMs={}",
-                            properties.getModel(), attempt + 1, delayMillis);
+                            model, attempt + 1, delayMillis);
                     sleepBeforeRetry(interactive ? Math.min(delayMillis, 250L) : delayMillis);
                     continue;
                 }
@@ -326,7 +363,7 @@ public class GeminiService {
                 long totalMillis = Duration.between(overallStart, Instant.now()).toMillis();
                 if (retryable) {
                     log.error("Tentativas esgotadas por falhas de conectividade. model={}, attempts={}, totalDurationMs={}",
-                            properties.getModel(), attempt, totalMillis);
+                            model, attempt, totalMillis);
                     throw new GeminiIntegrationException(
                             TEMPORARY_UNAVAILABLE_MESSAGE,
                             HttpStatus.BAD_GATEWAY,
@@ -335,18 +372,22 @@ public class GeminiService {
                 }
 
                 log.error("Falha nao transitoria de conectividade ao chamar Gemini. model={}, totalDurationMs={}, errorType={}",
-                        properties.getModel(), totalMillis, rootCauseName(e));
+                        model, totalMillis, rootCauseName(e));
                 throw new GeminiIntegrationException(
                         REQUEST_FAILED_MESSAGE,
                         HttpStatus.INTERNAL_SERVER_ERROR,
                         "Falha nao transitoria de conectividade ao chamar Gemini.",
                         e);
             } catch (GeminiIntegrationException e) {
+                GeminiUsage.log(model, feature, responseBody,
+                        Duration.between(attemptStart, Instant.now()).toMillis(), "error", attempt);
                 throw e;
             } catch (Exception e) {
+                GeminiUsage.log(model, feature, responseBody,
+                        Duration.between(attemptStart, Instant.now()).toMillis(), "error", attempt);
                 long totalMillis = Duration.between(overallStart, Instant.now()).toMillis();
                 log.error("Erro inesperado ao chamar Gemini. model={}, totalDurationMs={}, errorType={}",
-                        properties.getModel(), totalMillis, e.getClass().getSimpleName());
+                        model, totalMillis, e.getClass().getSimpleName());
                 throw new GeminiIntegrationException(
                         REQUEST_FAILED_MESSAGE,
                         HttpStatus.INTERNAL_SERVER_ERROR,
@@ -453,10 +494,10 @@ public class GeminiService {
         }
     }
 
-    private String buildGenerateContentUrl() {
+    private String buildGenerateContentUrl(String model) {
         return properties.getGenerateContentBaseUrl()
                 + "/"
-                + properties.getModel()
+                + model
                 + ":generateContent?key="
                 + properties.getKey();
     }

@@ -19,8 +19,12 @@ public class RestTemplateConfig {
                 .setReadTimeout(Duration.ofMillis(properties.getReadTimeoutMillis()))
                 .build();
     }
-    @Bean
     public RestTemplate smartReplyRestTemplate(RestTemplateBuilder builder) {
-        return builder.setConnectTimeout(Duration.ofMillis(1500)).setReadTimeout(Duration.ofMillis(4000)).build();
+        return smartReplyRestTemplate(builder, new GeminiApiProperties());
+    }
+
+    @Bean
+    public RestTemplate smartReplyRestTemplate(RestTemplateBuilder builder, GeminiApiProperties properties) {
+        return builder.setConnectTimeout(Duration.ofMillis(1500)).setReadTimeout(Duration.ofMillis(properties.getSafeSmartReplyReadTimeoutMillis())).build();
     }
 }
