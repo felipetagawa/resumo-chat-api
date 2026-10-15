@@ -47,12 +47,12 @@ class SmartReplyBenchmarkExportTest {
             server.expect(method(org.springframework.http.HttpMethod.POST)).andExpect(req -> {
                 JSONObject body = new JSONObject(((MockClientHttpRequest) req).getBodyAsString());
                 assertEquals(512, body.getJSONObject("generationConfig").getInt("maxOutputTokens"));
-                assertEquals(0.5, body.getJSONObject("generationConfig").getDouble("temperature"));
+                assertEquals(request.regenerate() ? 0.8 : 0.5, body.getJSONObject("generationConfig").getDouble("temperature"));
                 String prompt = body.getJSONArray("contents").getJSONObject(0).getJSONArray("parts").getJSONObject(0).getString("text");
                 assertFalse(prompt.contains("offline-placeholder"));
                 String marker = "\n\nDADOS DO ATENDIMENTO (JSON):\n";
                 JSONObject facts = new JSONObject(prompt.substring(prompt.indexOf(marker) + marker.length()));
-                assertEquals(java.util.Set.of("conversation", "promptComplement"), facts.keySet());
+                assertEquals(java.util.Set.of("conversation", "promptComplement", "styleSamples", "replyInstruction"), facts.keySet());
                 assertTrue(facts.getString("conversation").length() <= 16000);
                 if (scenario.getString("id").equals("27-long-bounded")) {
                     assertTrue(facts.getString("conversation").contains("[trecho intermediário omitido]"));
@@ -60,7 +60,7 @@ class SmartReplyBenchmarkExportTest {
                 }
                 exported.put(new JSONObject().put("id", scenario.getString("id"))
                         .put("contextMode", scenario.getString("contextMode"))
-                        .put("profile", request.profile().name()).put("body", body)
+                        .put("profile", "VOICE").put("body", body)
                         .put("checks", scenario.getJSONObject("checks"))
                         .put("review", scenario.getString("review")));
             }).andRespond(withSuccess("{\"candidates\":[{\"finishReason\":\"STOP\",\"content\":{\"parts\":[{\"text\":\"Rascunho sintético de teste\"}]}}]}", MediaType.APPLICATION_JSON));

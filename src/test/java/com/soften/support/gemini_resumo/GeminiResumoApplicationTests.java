@@ -42,13 +42,13 @@ class GeminiResumoApplicationTests {
 
     @Test
     void smartReplyEndpointReturnsOneDraftWithoutDatabase() throws Exception {
-        when(geminiService.generateInteractive(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString()))
+        when(geminiService.generateInteractive(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyBoolean()))
                 .thenReturn("Pode informar a rejeição?");
         assertTrue(context.getBeansOfType(DataSource.class).isEmpty());
         mockMvc.perform(post("/api/gemini/responder").contentType(MediaType.APPLICATION_JSON)
                 .content("{\"conversation\":\"Cliente: falha na nota\",\"profile\":\"DIRECT\"}"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.reply").value("Pode informar a rejeição?"));
-        org.mockito.Mockito.verify(geminiService).generateInteractive(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString());
+        org.mockito.Mockito.verify(geminiService).generateInteractive(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyBoolean());
     }
 
     @Test

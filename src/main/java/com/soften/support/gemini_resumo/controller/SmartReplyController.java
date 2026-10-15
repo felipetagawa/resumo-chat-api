@@ -20,6 +20,9 @@ public class SmartReplyController {
                 .body(Map.of("erro","Limite de sugestões atingido. Tente novamente em um minuto."));
         try { return ResponseEntity.ok(service.reply(request)); }
         catch (IllegalArgumentException e) { return ResponseEntity.badRequest().body(Map.of("erro","Contexto ou perfil inválido.")); }
+        catch (SmartReplyRejectedException e) {
+            return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(Map.of("erro","Não saiu uma boa sugestão. Tente ↻ Outra."));
+        }
         catch (GeminiIntegrationException e) {
             return ResponseEntity.status(e.getHttpStatus()).body(Map.of("erro","Não foi possível sugerir uma resposta. Tente novamente."));
         }

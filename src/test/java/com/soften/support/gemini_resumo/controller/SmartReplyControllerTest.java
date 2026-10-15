@@ -25,11 +25,11 @@ class SmartReplyControllerTest {
     @Test void validAndOptionalFields() throws Exception {
         for (String p:new String[]{"DIRECT","EMPATHETIC","DIDACTIC"})
             send(Map.of("conversation","Cliente: oi","profile",p)).andExpect(status().isOk()).andExpect(jsonPath("$.reply").value("Pode informar o erro?"));
-        verify(service,times(3)).reply(any());
+        send(Map.of("conversation","Cliente: oi")).andExpect(status().isOk());
+        verify(service,times(4)).reply(any());
     }
     @Test void rejectsInvalidInputBeforeGeneration() throws Exception {
         Object[] bodies={Map.of("profile","DIRECT"),Map.of("conversation"," ","profile","DIRECT"),
-            Map.of("conversation","oi"),Map.of("conversation","oi","profile","JEV"),
             Map.of("conversation","x".repeat(20001),"profile","DIRECT"),
             Map.of("conversation","oi","profile","DIRECT","promptComplement","x".repeat(2001)),
             Map.of("conversation",12,"profile","DIRECT"),Map.of("conversation","oi","profile",0),
