@@ -26,4 +26,20 @@ class ReplyPolishTest {
         assertEquals("", ReplyPolish.apply("Entendo sua frustração. Qualquer dúvida estou à disposição."));
         assertEquals("", ReplyPolish.apply("Certo!"));
     }
+    @Test void closerWithSubstanceKeepsItsCallToAction() {
+        assertEquals("Vou precisar acessar sua máquina. Fico à disposição para acessar via AnyDesk assim que me passar o código.",
+                ReplyPolish.apply("Vou precisar acessar sua máquina. Fico à disposição para acessar via AnyDesk assim que me passar o código."));
+        assertEquals("Já reenviei a nota e ela foi autorizada.",
+                ReplyPolish.apply("Peço desculpas pelo transtorno, já reenviei a nota e ela foi autorizada."));
+    }
+    @Test void removesLongerOpeningCliches() {
+        assertEquals("Pode me mandar o XML?", ReplyPolish.apply("Entendo sua frustração com a demora. Pode me mandar o XML?"));
+        assertEquals("Vou olhar.", ReplyPolish.apply("Compreendo a sua preocupação. Vou olhar."));
+        assertEquals("Pode mandar o XML?", ReplyPolish.apply("Agradeço o contato! Pode mandar o XML?"));
+        assertEquals("Pode mandar o XML?", ReplyPolish.apply("Agradeço a paciência. Pode mandar o XML?"));
+    }
+    @Test void removesFillerAfterClosingPhrases() {
+        assertEquals("Pode mandar o XML.", ReplyPolish.apply("Pode mandar o XML. Qualquer dúvida, é só chamar!"));
+        assertEquals("Pode mandar o XML.", ReplyPolish.apply("Pode mandar o XML. Estou à disposição para o que precisar."));
+    }
 }
