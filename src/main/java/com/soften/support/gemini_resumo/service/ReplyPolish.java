@@ -30,20 +30,21 @@ final class ReplyPolish {
             "sempre", "conte", "comigo", "com", "nós", "nos", "momento", "e", "ou", "de", "da", "do", "em", "aqui", "aí",
             "ai", "suporte", "equipe", "nosso", "pessoal", "vocês", "você", "voce", "sua", "seu", "ajuda", "necessário",
             "necessario", "esclarecer", "esclarecimentos", "esclarecimento", "sobre", "atendimento", "contato", "paciência",
-            "paciencia", "compreensão", "compreensao", "ajudado", "ter", "espero");
+            "paciencia", "compreensão", "compreensao", "ajudado", "ter", "espero", "pode", "podem");
 
     private ReplyPolish() {}
 
     static String apply(String raw) {
         String text = raw == null ? "" : raw.strip();
-        for (int i = 0; i < 3; i++) {
+        // Repeat while something is removed; each pass strictly shortens the text, so this terminates.
+        while (true) {
             Matcher m = OPENER.matcher(text);
             if (!m.lookingAt() || m.end() == 0) break;
             text = capitalize(text.substring(m.end()).strip());
         }
-        for (int i = 0; i < 3; i++) {
+        while (true) {
             String next = dropClosingSentence(text);
-            if (next.equals(text)) break;
+            if (next.length() >= text.length()) break;
             text = next;
         }
         return text.strip();

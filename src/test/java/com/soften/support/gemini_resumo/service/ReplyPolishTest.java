@@ -42,4 +42,19 @@ class ReplyPolishTest {
         assertEquals("Pode mandar o XML.", ReplyPolish.apply("Pode mandar o XML. Qualquer dúvida, é só chamar!"));
         assertEquals("Pode mandar o XML.", ReplyPolish.apply("Pode mandar o XML. Estou à disposição para o que precisar."));
     }
+    @Test void removesOrdinaryPodeMeChamarCloser() {
+        assertEquals("Pode mandar o XML.", ReplyPolish.apply("Pode mandar o XML. Qualquer dúvida, pode me chamar!"));
+        assertEquals("Pode mandar o XML.", ReplyPolish.apply("Pode mandar o XML. Qualquer dúvida, pode me avisar."));
+        assertEquals("Pode mandar o XML.", ReplyPolish.apply("Pode mandar o XML. Qualquer outra dúvida, pode falar comigo!"));
+    }
+    @Test void keepsRealInstructionsAfterQualquerDuvida() {
+        for (String s : new String[]{"Qualquer dúvida, pode mandar o XML.", "Qualquer dúvida no passo 2, pode reiniciar o serviço."})
+            assertEquals(s, ReplyPolish.apply(s));
+    }
+    @Test void removesMoreThanThreeConsecutiveOpenersAndClosers() {
+        assertEquals("Pode mandar o XML.", ReplyPolish.apply("Certo! Perfeito! Claro! Compreendo. Pode mandar o XML."));
+        assertEquals("Pode mandar o XML.", ReplyPolish.apply(
+                "Pode mandar o XML. Espero ter ajudado. Qualquer dúvida, pode me chamar! Agradeço o contato. Fico à disposição!"));
+        assertEquals("", ReplyPolish.apply("Certo! Perfeito! Claro! Compreendo. Fico à disposição! Espero ter ajudado. Agradeço o contato. Qualquer dúvida, pode me chamar!"));
+    }
 }
