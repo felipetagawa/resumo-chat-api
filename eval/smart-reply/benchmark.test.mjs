@@ -197,3 +197,9 @@ test('cache discounts and human utility remain separate from deterministic check
   assert.equal(reviewed.costPerReadyResponse, row.estimatedUsd);
   assert.equal(reviewed.humanReviewPending, false);
 });
+
+test('every output is checked for forbidden stock phrases', () => {
+  assert.equal(deterministicChecks('Consegue me mandar o XML? Fico à disposição!', 'STOP').noCliche, false);
+  assert.equal(deterministicChecks('Entendo sua situação. Pode mandar o print?', 'STOP').noCliche, false);
+  assert.equal(deterministicChecks('Consegue me mandar o XML dessa nota?', 'STOP').noCliche, true);
+});

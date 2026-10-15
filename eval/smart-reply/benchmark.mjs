@@ -48,10 +48,14 @@ export function authorizePaid(paid, env, models) {
   }
 }
 
+// Mirrors the API's forbidden list; any match anywhere in the reply fails triage.
+const CLICHE_RE = /(?:entendo (?:perfeitamente )?(?:sua|a) (?:situa[çc][ãa]o|frustra[çc][ãa]o)|compreendo|(?:fico|estou) [àa] disposi[çc][ãa]o|qualquer (?:outra )?d[úu]vida|espero ter ajudado|pe[çc]o desculpas pelo transtorno|agrade[çc]o (?:a|pela) (?:sua )?paci[êe]ncia|agrade[çc]o (?:o|pelo) (?:seu )?contato|prezad[oa])/iu;
+
 export function deterministicChecks(output, finishReason, checks = {}) {
   const result = {nonempty: typeof output === 'string' && output.trim().length > 0,
     withinCharacterLimit: typeof output === 'string' && output.length <= 6000,
     complete: finishReason === 'STOP'};
+  result.noCliche = typeof output === 'string' && !CLICHE_RE.test(output);
   if (checks.noGreeting) {
     result.noRedundantGreeting = !/^\s*(?:ol[aá]|oi\b|bom dia|boa tarde|boa noite|tudo bem|seja bem.vind[oa]|me chamo|sou (?:o|a) (?:técnic[oa]|atendente))/iu.test(output);
   }
