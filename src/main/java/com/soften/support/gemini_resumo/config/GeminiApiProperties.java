@@ -10,6 +10,11 @@ import static java.lang.Double.isFinite;
 public class GeminiApiProperties {
 
     private String smartReplyModel = "";
+    // Queue context line: pinned apart from the shared GEMINI_MODEL so a thinking model never bills it.
+    private String problemLineModel = "gemini-2.5-flash-lite";
+
+    public String getProblemLineModel() { return problemLineModel; }
+    public void setProblemLineModel(String value) { problemLineModel = value; }
     private boolean smartReplyPremiumEnabled = false;
     private int smartReplyReadTimeoutMillis = 4000;
 

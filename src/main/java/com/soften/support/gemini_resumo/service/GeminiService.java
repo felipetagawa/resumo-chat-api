@@ -239,9 +239,11 @@ public class GeminiService {
         JSONObject config = body.getJSONObject("generationConfig");
         config.put("temperature", 0.2);
         config.put("maxOutputTokens", 64);
-        // Always the cheap default model (Flash-Lite), never the premium Smart Reply override.
+        String model = properties.getProblemLineModel();
+        // Thinking tokens are billed as output and would exhaust the 64-token budget.
+        if (model.startsWith("gemini-2.5")) config.put("thinkingConfig", new JSONObject().put("thinkingBudget", 0));
         return extractInteractiveText(executeGenerateContent(body, interactiveTemplate,
-                Math.min(2, properties.getSafeMaxAttempts()), true, properties.getModel(), "problem_line"));
+                Math.min(2, properties.getSafeMaxAttempts()), true, model, "problem_line"));
     }
 
     private String extractInteractiveText(String json) {
