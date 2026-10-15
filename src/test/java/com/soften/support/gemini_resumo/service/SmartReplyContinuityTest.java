@@ -33,7 +33,7 @@ class SmartReplyContinuityTest {
         server.expect(requestTo("https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash-lite:generateContent?key=test-key"))
                 .andExpect(req -> {
                     JSONObject body = new JSONObject(((MockClientHttpRequest) req).getBodyAsString());
-                    assertEquals(0.3, body.getJSONObject("generationConfig").getDouble("temperature"));
+                    assertEquals(0.5, body.getJSONObject("generationConfig").getDouble("temperature"));
                     assertEquals(512, body.getJSONObject("generationConfig").getInt("maxOutputTokens"));
                     assertFalse(body.has("tools"));
                     assertEquals(1, body.getJSONArray("contents").length());

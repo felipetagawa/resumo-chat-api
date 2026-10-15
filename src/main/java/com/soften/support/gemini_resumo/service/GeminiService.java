@@ -215,11 +215,17 @@ public class GeminiService {
     }
 
     public String generateInteractive(String policy, String data) {
+        return generateInteractive(policy, data, false);
+    }
+
+    public String generateInteractive(String policy, String data, boolean regenerate) {
         String model = properties.resolveSmartReplyModel();
         JSONObject body = buildGenerateContentBody(policy + "\n\nDADOS DO ATENDIMENTO (JSON):\n" + data);
-        body.getJSONObject("generationConfig").put("maxOutputTokens", 512);
+        JSONObject config = body.getJSONObject("generationConfig");
+        config.put("maxOutputTokens", 512);
+        // "Outra" must read visibly different; the first draft stays closer to the evidence.
+        config.put("temperature", regenerate ? 0.8 : 0.5);
         if ("gemini-3.8-flash".equals(model)) {
-            JSONObject config = body.getJSONObject("generationConfig");
             config.remove("temperature");
             config.put("thinkingConfig", new JSONObject().put("thinkingLevel", "LOW"));
         }

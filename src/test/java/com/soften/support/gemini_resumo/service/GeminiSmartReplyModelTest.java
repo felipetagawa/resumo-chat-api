@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.boot.context.properties.bind.Binder;
 import org.springframework.boot.context.properties.bind.Bindable;
 import org.springframework.boot.context.properties.source.MapConfigurationPropertySource;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.mock.http.client.MockClientHttpRequest;
 import org.springframework.test.web.client.MockRestServiceServer;
@@ -13,6 +14,7 @@ import org.springframework.web.client.RestTemplate;
 import java.util.Map;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.mock;
+import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
@@ -56,12 +58,24 @@ class GeminiSmartReplyModelTest {
         var transport = new RestTemplate();
         var server = MockRestServiceServer.bindTo(transport).build();
         server.expect(requestTo("https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash-lite:generateContent?key=dummy"))
-            .andExpect(req -> assertEquals(0.3, new JSONObject(((MockClientHttpRequest)req).getBodyAsString())
+            .andExpect(req -> assertEquals(0.5, new JSONObject(((MockClientHttpRequest)req).getBodyAsString())
                 .getJSONObject("generationConfig").getDouble("temperature")))
             .andRespond(withSuccess(response(), MediaType.APPLICATION_JSON));
         assertEquals("Hello world", new GeminiService(configured("gemini-3.8-flash", false), transport,
             mock(GoogleFileSearchService.class)).generateInteractive("policy", "{}"));
         server.verify();
+    }
+    @Test void flashLiteUsesModerateTemperatureAndMoreForRegeneration() {
+        for (boolean regenerate : new boolean[]{false, true}) {
+            var interactive = new RestTemplate();
+            var server = MockRestServiceServer.bindTo(interactive).build();
+            var service = new GeminiService(configured("", false), new RestTemplate(), mock(GoogleFileSearchService.class), interactive);
+            server.expect(method(HttpMethod.POST)).andExpect(req -> assertEquals(regenerate ? 0.8 : 0.5,
+                    new JSONObject(((MockClientHttpRequest) req).getBodyAsString()).getJSONObject("generationConfig").getDouble("temperature")))
+                .andRespond(withSuccess("{\"candidates\":[{\"finishReason\":\"STOP\",\"content\":{\"parts\":[{\"text\":\"ok\"}]}}]}", MediaType.APPLICATION_JSON));
+            assertEquals("ok", service.generateInteractive("policy", "{}", regenerate));
+            server.verify();
+        }
     }
     @Test void invalidModelFailsBeforeNetworkEvenWhenDisabled() {
         var transport = mock(RestTemplate.class);

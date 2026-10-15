@@ -47,7 +47,7 @@ class SmartReplyBenchmarkExportTest {
             server.expect(method(org.springframework.http.HttpMethod.POST)).andExpect(req -> {
                 JSONObject body = new JSONObject(((MockClientHttpRequest) req).getBodyAsString());
                 assertEquals(512, body.getJSONObject("generationConfig").getInt("maxOutputTokens"));
-                assertEquals(0.3, body.getJSONObject("generationConfig").getDouble("temperature"));
+                assertEquals(0.5, body.getJSONObject("generationConfig").getDouble("temperature"));
                 String prompt = body.getJSONArray("contents").getJSONObject(0).getJSONArray("parts").getJSONObject(0).getString("text");
                 assertFalse(prompt.contains("offline-placeholder"));
                 String marker = "\n\nDADOS DO ATENDIMENTO (JSON):\n";
