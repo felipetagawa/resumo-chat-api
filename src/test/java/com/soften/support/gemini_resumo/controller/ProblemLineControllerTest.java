@@ -46,9 +46,13 @@ class ProblemLineControllerTest {
         send(Map.of("mensagens", "erro")).andExpect(status().isOk());
         send(Map.of("mensagens", "erro")).andExpect(status().isTooManyRequests()).andExpect(header().string("Retry-After", "60"));
     }
-    @Test void normalizeTruncatesAt70() {
+    @Test void normalizeTruncatesAt32() {
         String line = ProblemLineController.normalize("a".repeat(100));
-        assertEquals(70, line.length());
-        assertEquals('…', line.charAt(69));
+        assertEquals(32, line.length());
+        assertEquals('…', line.charAt(31));
+    }
+    @Test void normalizePrefersAWordBoundary() {
+        assertEquals("Certificado novo não emite…", ProblemLineController.normalize("Certificado novo não emite DANFE no PDV"));
+        assertEquals("NF-e rejeição 539", ProblemLineController.normalize("NF-e rejeição 539."));
     }
 }

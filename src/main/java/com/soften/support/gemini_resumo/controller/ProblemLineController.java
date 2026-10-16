@@ -9,7 +9,8 @@ import org.springframework.web.bind.annotation.*;
 @RequestMapping("/api/gemini")
 @CrossOrigin(origins="*")
 public class ProblemLineController {
-    static final int LIMIT = 70;
+    // A queue label: fits the ~286px SZ queue column beside the AnyDesk code.
+    static final int LIMIT = 32;
     private final GeminiService gemini;
     private final SmartReplyRateLimiter limiter;
     public ProblemLineController(GeminiService gemini, SmartReplyRateLimiter limiter) {
@@ -28,6 +29,11 @@ public class ProblemLineController {
         String line = raw == null ? "" : raw.replaceAll("\\s+", " ").trim()
                 .replaceAll("^[\"'“”]+|[\"'“”]+$", "").replaceAll("\\.+$", "").trim();
         if (line.equalsIgnoreCase("SEM_PROBLEMA")) return "";
-        return line.length() > LIMIT ? line.substring(0, LIMIT - 1).trim() + "…" : line;
+        if (line.length() <= LIMIT) return line;
+        String cut = line.substring(0, LIMIT - 1);
+        // Prefer a word boundary, unless it would throw away more than half the label.
+        int space = cut.lastIndexOf(' ');
+        if (space >= LIMIT / 2) cut = cut.substring(0, space);
+        return cut.trim() + "…";
     }
 }

@@ -24,6 +24,23 @@ class GeminiProblemLineModelTest {
             .andExpect(req -> {
                 var config = new JSONObject(((MockClientHttpRequest) req).getBodyAsString()).getJSONObject("generationConfig");
                 assertEquals(64, config.getInt("maxOutputTokens"));
+                // v1 answers 400 "Thinking is not enabled for api version v1" to any thinkingConfig.
+                assertFalse(config.has("thinkingConfig"));
+            }).andRespond(withSuccess("{\"candidates\":[{\"finishReason\":\"STOP\",\"content\":{\"parts\":[{\"text\":\"Erro no XML\"}]}}]}",
+                MediaType.APPLICATION_JSON));
+        assertEquals("Erro no XML", service.generateProblemLine("erro no xml"));
+        server.verify();
+    }
+    @Test void v1betaStillSwitchesThinkingOff() {
+        var p = new GeminiApiProperties();
+        p.setKey("dummy");
+        p.setGenerateContentBaseUrl("https://generativelanguage.googleapis.com/v1beta/models");
+        var interactive = new RestTemplate();
+        var server = MockRestServiceServer.bindTo(interactive).build();
+        var service = new GeminiService(p, new RestTemplate(), mock(GoogleFileSearchService.class), interactive);
+        server.expect(requestTo("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=dummy"))
+            .andExpect(req -> {
+                var config = new JSONObject(((MockClientHttpRequest) req).getBodyAsString()).getJSONObject("generationConfig");
                 assertEquals(0, config.getJSONObject("thinkingConfig").getInt("thinkingBudget"));
             }).andRespond(withSuccess("{\"candidates\":[{\"finishReason\":\"STOP\",\"content\":{\"parts\":[{\"text\":\"Erro no XML\"}]}}]}",
                 MediaType.APPLICATION_JSON));
