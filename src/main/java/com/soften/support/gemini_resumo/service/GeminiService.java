@@ -254,6 +254,13 @@ public class GeminiService {
         // without thinking by default.
         if (model.startsWith("gemini-2.5") && properties.getGenerateContentBaseUrl().contains("/v1beta"))
             config.put("thinkingConfig", new JSONObject().put("thinkingBudget", 0));
+        // 3.8 Flash always thinks: same settings as Smart Reply, with room for the thinking tokens.
+        // The visible label is still cut to 32 characters by the controller.
+        if ("gemini-3.8-flash".equals(model)) {
+            config.remove("temperature");
+            config.put("maxOutputTokens", 512);
+            config.put("thinkingConfig", new JSONObject().put("thinkingLevel", "LOW"));
+        }
         return extractInteractiveText(executeGenerateContent(body, interactiveTemplate,
                 Math.min(2, properties.getSafeMaxAttempts()), true, model, "problem_line"));
     }

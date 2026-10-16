@@ -31,6 +31,24 @@ class GeminiProblemLineModelTest {
         assertEquals("Erro no XML", service.generateProblemLine("erro no xml"));
         server.verify();
     }
+    @Test void flash38GetsLowThinkingAndRoomForIt() {
+        var p = new GeminiApiProperties();
+        p.setKey("dummy");
+        p.setProblemLineModel("gemini-3.8-flash");
+        var interactive = new RestTemplate();
+        var server = MockRestServiceServer.bindTo(interactive).build();
+        var service = new GeminiService(p, new RestTemplate(), mock(GoogleFileSearchService.class), interactive);
+        server.expect(requestTo("https://generativelanguage.googleapis.com/v1/models/gemini-3.8-flash:generateContent?key=dummy"))
+            .andExpect(req -> {
+                var config = new JSONObject(((MockClientHttpRequest) req).getBodyAsString()).getJSONObject("generationConfig");
+                assertEquals(512, config.getInt("maxOutputTokens"));
+                assertEquals("LOW", config.getJSONObject("thinkingConfig").getString("thinkingLevel"));
+                assertFalse(config.has("temperature"));
+            }).andRespond(withSuccess("{\"candidates\":[{\"finishReason\":\"STOP\",\"content\":{\"parts\":[{\"text\":\"NF-e rejeição 539\"}]}}]}",
+                MediaType.APPLICATION_JSON));
+        assertEquals("NF-e rejeição 539", service.generateProblemLine("rejeição 539"));
+        server.verify();
+    }
     @Test void v1betaStillSwitchesThinkingOff() {
         var p = new GeminiApiProperties();
         p.setKey("dummy");
