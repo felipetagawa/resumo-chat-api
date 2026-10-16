@@ -10,7 +10,7 @@ import java.util.Set;
 /** Only aggregate metadata enters these records; never log a body, URI or exception. */
 final class GeminiUsage {
     private static final Logger LOG = LoggerFactory.getLogger("gemini.usage");
-    private static final Set<String> FEATURES = Set.of("smart_reply", "report", "ask", "docs", "classification", "file_search");
+    private static final Set<String> FEATURES = Set.of("smart_reply", "problem_line", "report", "ask", "docs", "classification", "file_search");
     private GeminiUsage() {}
 
     static JSONObject metadata(String model, String feature, String body, long durationMs,
