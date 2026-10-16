@@ -6,12 +6,17 @@ import java.util.ArrayList;
 import java.util.List;
 
 public record SmartReplyRequest(String conversation, String promptComplement, String replyInstruction,
-        List<String> styleSamples, boolean regenerate) {
+        List<String> styleSamples, boolean regenerate, String currentReply) {
     public static final int MAX_CONVERSATION = 20000, MAX_COMPLEMENT = 2000, MAX_INSTRUCTION = 600,
-            MAX_SAMPLES = 8, MAX_SAMPLE = 300;
+            MAX_SAMPLES = 8, MAX_SAMPLE = 300, MAX_CURRENT_REPLY = 1500;
 
     public SmartReplyRequest {
         styleSamples = styleSamples == null ? List.of() : List.copyOf(styleSamples);
+    }
+
+    public SmartReplyRequest(String conversation, String promptComplement, String replyInstruction,
+            List<String> styleSamples, boolean regenerate) {
+        this(conversation, promptComplement, replyInstruction, styleSamples, regenerate, null);
     }
 
     // All validation happens here, before Bean Validation could echo rejected text into logs.
@@ -21,17 +26,23 @@ public record SmartReplyRequest(String conversation, String promptComplement, St
             @JsonProperty("replyInstruction") JsonNode replyInstruction,
             @JsonProperty("styleSamples") JsonNode styleSamples,
             @JsonProperty("regenerate") JsonNode regenerate,
+            // The suggestion on screen (possibly hand-edited) that replyInstruction should revise.
+            @JsonProperty("currentReply") JsonNode currentReply,
             @JsonProperty("profile") JsonNode legacyProfile,
             @JsonProperty("styleInstruction") JsonNode legacyStyle) {
         if (regenerate != null && !regenerate.isNull() && !regenerate.isBoolean())
             throw new IllegalArgumentException("regenerate deve ser booleano");
         // Extensions <= 1.5.2 still send these; accepted, type-checked and ignored.
         text(legacyProfile); text(legacyStyle);
-        String c = text(conversation), pc = text(complement), ri = text(replyInstruction);
+        String c = text(conversation), pc = text(complement), ri = text(replyInstruction), cr = text(currentReply);
         if (c == null || c.isBlank() || c.length() > MAX_CONVERSATION) throw new IllegalArgumentException("Conversa inválida");
         if (pc != null && pc.length() > MAX_COMPLEMENT) throw new IllegalArgumentException("Adendo inválido");
         if (ri != null && ri.length() > MAX_INSTRUCTION) throw new IllegalArgumentException("Instrução avulsa inválida");
-        return new SmartReplyRequest(c, pc, ri, samples(styleSamples), regenerate != null && regenerate.asBoolean(false));
+        if (cr != null && cr.length() > MAX_CURRENT_REPLY) throw new IllegalArgumentException("Resposta atual inválida");
+        // A revision needs both the text and what to change in it.
+        if (cr != null && !cr.isBlank() && (ri == null || ri.isBlank())) throw new IllegalArgumentException("Ajuste sem instrução");
+        return new SmartReplyRequest(c, pc, ri, samples(styleSamples), regenerate != null && regenerate.asBoolean(false),
+                cr == null || cr.isBlank() ? null : cr.trim());
     }
 
     private static List<String> samples(JsonNode node) {

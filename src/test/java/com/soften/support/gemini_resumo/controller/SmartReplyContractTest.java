@@ -65,6 +65,26 @@ class SmartReplyContractTest {
         send(Map.of("conversation", "oi", "replyInstruction", "x".repeat(600), "styleSamples", Collections.nCopies(8, "y".repeat(300))))
                 .andExpect(status().isOk());
     }
+    @Test void currentReplyTravelsAsDataForARevision() throws Exception {
+        send(Map.of("conversation", "Cliente: oi", "replyInstruction", "mais curto",
+                "currentReply", "  Consigo sim, me passa o AnyDesk do segundo computador?  ")).andExpect(status().isOk());
+        var policy = ArgumentCaptor.forClass(String.class);
+        var data = ArgumentCaptor.forClass(String.class);
+        verify(gemini).generateInteractive(policy.capture(), data.capture(), eq(false));
+        JSONObject facts = new JSONObject(data.getValue());
+        assertEquals("Consigo sim, me passa o AnyDesk do segundo computador?", facts.getString("currentReply"));
+        assertEquals("mais curto", facts.getString("replyInstruction"));
+        assertTrue(policy.getValue().contains("AJUSTE (currentReply)"));
+        assertFalse(policy.getValue().contains("segundo computador"), "the reply never enters the policy text");
+    }
+    @Test void invalidRevisionsAreRejectedBeforeProvider() throws Exception {
+        List<Map<String, Object>> bodies = List.of(
+                Map.of("conversation", "oi", "replyInstruction", "mais curto", "currentReply", "x".repeat(1501)),
+                Map.of("conversation", "oi", "replyInstruction", "mais curto", "currentReply", 7),
+                Map.of("conversation", "oi", "currentReply", "texto sem pedido de ajuste"));
+        for (var body : bodies) send(body).andExpect(status().isBadRequest());
+        verifyNoInteractions(gemini);
+    }
     @Test void clicheOnlyReplyAsksForAnotherWording() throws Exception {
         when(gemini.generateInteractive(anyString(), anyString(), anyBoolean())).thenReturn("Fico à disposição!");
         send(Map.of("conversation", "oi")).andExpect(status().isBadGateway())
