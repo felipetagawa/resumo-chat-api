@@ -104,11 +104,73 @@ class SmartReplyChatTest {
         assertEquals("Consulta a chave.", ((SmartReplyResponse) spaced[0]).reply());
         assertEquals(List.of(MANUAL_539), urls((SmartReplyResponse) spaced[0]), "deduped by url");
 
+        // Only the final line is a control line: earlier lines are reply text and are never touched.
         var twice = run(request(CUSTOMER_539, null, List.of()), "Primeiro passo.\nFONTES: 1\nSegundo passo.\nFONTES: nenhuma");
         SmartReplyResponse response = (SmartReplyResponse) twice[0];
-        assertFalse(response.reply().toUpperCase().contains("FONTES"));
-        assertEquals("Primeiro passo.\nSegundo passo.", response.reply());
+        assertEquals("Primeiro passo.\nFONTES: 1\nSegundo passo.", response.reply());
         assertTrue(response.sources().isEmpty(), "numbers come from the last control line");
+    }
+
+    @Test void everyFormTheModelWritesTheControlLineInIsStripped() throws Exception {
+        for (String line : List.of("FONTES: 1.", "FONTES: 1;", "**FONTES:** 1", "**FONTES**: 1", "(FONTES: 1)",
+                "FONTES: [1]", "FONTES: [1, 3]", "FONTES: 1-2", "FONTES: 1 e 3", "_FONTES: 1_")) {
+            for (String sep : List.of("\n", " ")) {
+                var out = run(request(CUSTOMER_539, null, List.of()), "Consulta a chave na SEFAZ." + sep + line);
+                assertEquals("Consulta a chave na SEFAZ.", ((SmartReplyResponse) out[0]).reply(), line);
+                assertEquals(List.of(MANUAL_539), urls((SmartReplyResponse) out[0]), "passage 1 cited by: " + line);
+            }
+        }
+        for (String line : List.of("FONTES: nenhuma.", "FONTES: nenhum", "**FONTES:** nenhuma", "(FONTES: nenhuma)", "Fontes: nenhum.")) {
+            for (String sep : List.of("\n", " ")) {
+                var out = run(request(CUSTOMER_539, null, List.of()), "Me manda um print?" + sep + line);
+                assertEquals("Me manda um print?", ((SmartReplyResponse) out[0]).reply(), line);
+                assertTrue(((SmartReplyResponse) out[0]).sources().isEmpty(), line);
+            }
+        }
+        var trailingBlank = run(request(CUSTOMER_539, null, List.of()), "Consulta a chave.\nFONTES: 1.\n\n");
+        assertEquals("Consulta a chave.", ((SmartReplyResponse) trailingBlank[0]).reply());
+    }
+
+    @Test void proseAboutTypefacesIsNeverAControlLine() throws Exception {
+        String sizes = "Para ler melhor, deixe o tamanho das fontes: 10";
+        for (String conversation : List.of(CUSTOMER_539, "Cliente: oi, bom dia")) {
+            var out = run(request(conversation, null, List.of()), sizes);
+            assertEquals(sizes, ((SmartReplyResponse) out[0]).reply(), conversation);
+            assertTrue(((SmartReplyResponse) out[0]).sources().isEmpty());
+        }
+        var middle = run(request(CUSTOMER_539, null, List.of()), "No cupom:\nFontes: 10 e 12\nDepois salve.\nFONTES: nenhuma");
+        assertEquals("No cupom:\nFontes: 10 e 12\nDepois salve.", ((SmartReplyResponse) middle[0]).reply());
+        assertTrue(((SmartReplyResponse) middle[0]).sources().isEmpty());
+
+        // Numbers the manual never sent: a sentence about typefaces, not a citation.
+        var last = run(request(CUSTOMER_539, null, List.of()), "No cupom, ajuste assim.\nFontes: 10 e 12");
+        assertEquals("No cupom, ajuste assim.\nFontes: 10 e 12", ((SmartReplyResponse) last[0]).reply());
+    }
+
+    @Test void citedNumbersComeOnlyFromTheFinalControlLine() {
+        assertEquals(java.util.Set.of(1, 3), SmartReplyService.cited("Texto\nFONTES: [1, 3]", 3).numbers());
+        assertEquals(java.util.Set.of(1, 3), SmartReplyService.cited("Texto\nFONTES: 1 e 3.", 3).numbers());
+        assertEquals(java.util.Set.of(1, 2), SmartReplyService.cited("Texto\nFONTES: 1-2", 3).numbers());
+        assertEquals(java.util.Set.of(1, 2, 3), SmartReplyService.cited("Texto\n**FONTES:** 1–3", 3).numbers());
+        assertEquals(java.util.Set.of(2), SmartReplyService.cited("Texto. fontes: 2", 3).numbers());
+        assertEquals(java.util.Set.of(), SmartReplyService.cited("Texto\nFONTES: nenhum", 3).numbers());
+        assertEquals(java.util.Set.of(), SmartReplyService.cited("No cupom:\nFontes: 1 e 2\nDepois salve.", 3).numbers(),
+                "an earlier line is never read as a citation");
+        assertEquals(java.util.Set.of(), SmartReplyService.cited("Texto\nFontes: 2", 0).numbers(), "no manual, no citation");
+    }
+
+    @Test void withoutDocumentationOnlyAnUppercaseControlLineIsStripped() throws Exception {
+        String noManual = "Cliente: oi, bom dia";
+        for (String text : List.of("Pode aumentar o tamanho.\nFontes: 12", "Pode aumentar o tamanho.\nfontes: 1",
+                "Pode aumentar o tamanho. Fontes: 1")) {
+            var out = run(request(noManual, null, List.of()), text);
+            assertFalse(((JSONObject) out[1]).has("documentacao"));
+            assertEquals(text, ((SmartReplyResponse) out[0]).reply());
+        }
+        // The model sometimes writes it anyway; it must not reach the customer.
+        var stray = run(request(noManual, null, List.of()), "Me manda um print?\nFONTES: nenhuma.");
+        assertEquals("Me manda um print?", ((SmartReplyResponse) stray[0]).reply());
+        assertTrue(((SmartReplyResponse) stray[0]).sources().isEmpty());
     }
 
     @Test void anInlineControlLineAtTheEndIsStrippedToo() throws Exception {

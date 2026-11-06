@@ -84,12 +84,15 @@ public class SmartReplyService {
     /** Kinds of message that never need the manual: chasing a reply and saying goodbye. */
     static final Set<String> NO_DOCS_INTENTS = Set.of("cobrar_retorno", "encerrar");
     // The control line naming the passages the model used; never shown to the technician.
-    // Only "FONTES: 1,3" / "FONTES: nenhuma" counts: a customer-facing "Fontes: portal da SEFAZ" line stays.
-    private static final String SOURCES_PAYLOAD = "fontes[ \\t]*:[ \\t]*(?:nenhuma|\\d[\\d \\t,e]*?)[ \\t]*";
-    private static final Pattern SOURCES_LINE = Pattern.compile("(?im)^[ \\t]*" + SOURCES_PAYLOAD + "(?:\\n|$)");
+    // Only the last non-empty line (or the end of it) can be one; earlier lines are reply text and are never touched.
+    // "fontes" also means typefaces, and "Fontes: portal da SEFAZ" is customer-facing prose: both stay.
+    // Forms the model writes: FONTES: 1,3 / 1 e 3 / 1-2 / [1, 3] / nenhum(a), with ** or _, (…), and a final "." or ";".
+    private static final String SOURCES_BODY = "[*_(\\[ \\t]*(fontes)[*_ \\t]*:[*_ \\t]*[(\\[]?[ \\t]*"
+            + "(nenhuma?|\\d{1,3}(?:[ \\t]*(?:[,;\\-\\u2013]|e)[ \\t]*\\d{1,3})*)[ \\t)\\]*_.;]*";
+    private static final Pattern SOURCES_LINE = Pattern.compile("(?i)" + SOURCES_BODY);
     // Small models sometimes append it to the last sentence instead of a line of its own.
-    private static final Pattern SOURCES_TAIL = Pattern.compile("(?i)[ \\t]+" + SOURCES_PAYLOAD + "$");
-    private static final Pattern NUMBER = Pattern.compile("\\d{1,3}");
+    private static final Pattern SOURCES_TAIL = Pattern.compile("(?i)[ \\t]+" + SOURCES_BODY + "$");
+    private static final Pattern NUMBER = Pattern.compile("(\\d{1,3})(?:[ \\t]*[-\\u2013][ \\t]*(\\d{1,3}))?");
 
     /** The reply without control lines, and the passage numbers cited on the last one. */
     record Cited(String text, Set<Integer> numbers) {}
@@ -141,7 +144,7 @@ public class SmartReplyService {
         if (raw == null) raw = gemini.generateInteractive(policy, data.toString(), r.regenerate());
         if (raw == null || raw.isBlank() || raw.length() > 6000)
             throw new GeminiIntegrationException(GENERIC, HttpStatus.BAD_GATEWAY, (Throwable) null);
-        Cited cited = cited(raw);
+        Cited cited = cited(raw, hits.size());
         String reply = ReplyPolish.apply(cited.text());
         if (reply.isEmpty()) throw new SmartReplyRejectedException();
         // Only the pages the reply says it used: "Base:" must never list a page the model ignored.
@@ -154,22 +157,44 @@ public class SmartReplyService {
         return new SmartReplyResponse(reply, List.copyOf(sources.values()));
     }
 
-    static Cited cited(String raw) {
-        Matcher m = SOURCES_LINE.matcher(raw);
-        String last = null;
-        while (m.find()) last = m.group();
-        String text = SOURCES_LINE.matcher(raw).replaceAll("").strip();
-        Matcher tail = SOURCES_TAIL.matcher(text);
-        if (tail.find()) {
-            last = tail.group();
-            text = text.substring(0, tail.start()).strip();
+    /** passages: how many DOCUMENTAÇÃO passages were sent (0 when none). */
+    static Cited cited(String raw, int passages) {
+        String text = raw.strip();
+        int lineStart = text.lastIndexOf('\n') + 1;
+        String last = text.substring(lineStart);
+        Matcher m = SOURCES_LINE.matcher(last);
+        int cut = lineStart;
+        boolean control = m.matches() && isControl(m, passages);
+        if (!control) {
+            m = SOURCES_TAIL.matcher(last);
+            // Glued to the last sentence: only right after its final punctuation, unless written in capitals.
+            control = m.find() && isControl(m, passages) && (m.group(1).equals("FONTES")
+                    || (m.start() > 0 && ".!?…".indexOf(last.charAt(m.start() - 1)) >= 0));
+            if (control) cut = lineStart + m.start();
         }
+        if (!control) return new Cited(text, Set.of());
+        return new Cited(text.substring(0, cut).strip(), numbers(m.group(2)));
+    }
+
+    // "FONTES" in capitals is never prose, so it is stripped even when no manual was sent (the model sometimes
+    // writes it anyway, and it must not reach the customer; its numbers then match no passage and are ignored).
+    // Any other spelling ("Fontes: 12") is a control line only when the manual was sent and it cites only sent passages.
+    private static boolean isControl(Matcher m, int passages) {
+        if (m.group(1).equals("FONTES")) return true;
+        if (passages == 0) return false;
+        for (int n : numbers(m.group(2))) if (n < 1 || n > passages) return false;
+        return true;
+    }
+
+    private static Set<Integer> numbers(String payload) {
         Set<Integer> numbers = new LinkedHashSet<>();
-        if (last != null) {
-            Matcher n = NUMBER.matcher(last.substring(last.indexOf(':') + 1));
-            while (n.find()) numbers.add(Integer.parseInt(n.group()));
+        Matcher n = NUMBER.matcher(payload);
+        while (n.find()) {
+            int from = Integer.parseInt(n.group(1));
+            int to = n.group(2) == null ? from : Integer.parseInt(n.group(2));
+            for (int i = Math.min(from, to); i <= Math.max(from, to); i++) numbers.add(i);
         }
-        return new Cited(text, numbers);
+        return numbers;
     }
 
     List<DocsIndex.Hit> relevantDocs(String conversation) { return relevantDocs(conversation, null); }
