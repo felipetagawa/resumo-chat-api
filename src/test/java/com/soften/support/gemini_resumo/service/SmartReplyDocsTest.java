@@ -44,6 +44,13 @@ class SmartReplyDocsTest {
         verifyNoInteractions(gemini);
     }
 
+    @Test void theOpeningOfALongAttendanceStillFindsTheManual() throws Exception {
+        String conversation = "Cliente: deu rejeição 539 duplicidade na NF-e\n"
+                + "Você: vou verificar\n".repeat(200) + "Cliente: e aí, resolveu?";
+        var hits = new SmartReplyService(mock(GeminiService.class), null, index()).relevantDocs(conversation);
+        assertEquals("https://d/539", hits.get(0).passage().url());
+    }
+
     @Test void unrelatedConversationSendsNoDocumentationAndGeminiCoversClaudeFailures() throws Exception {
         ClaudeService claude = mock(ClaudeService.class);
         when(claude.generate(anyString(), anyList(), anyLong(), any(Duration.class), anyString())).thenReturn(Optional.empty());

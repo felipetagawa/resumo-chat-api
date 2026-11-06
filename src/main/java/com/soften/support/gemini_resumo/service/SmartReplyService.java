@@ -68,6 +68,7 @@ public class SmartReplyService {
 
     // Customer text this long at the end of the conversation is enough to find the manual page.
     static final int DOCS_QUERY_CHARS = 1200;
+    static final int DOCS_OPENING_CHARS = 600;
     static final int DOCS_PASSAGES = 3;
     static final int DOCS_MIN_MATCHED_TERMS = 3;
 
@@ -117,9 +118,11 @@ public class SmartReplyService {
 
     List<DocsIndex.Hit> relevantDocs(String conversation) {
         if (docs == null || conversation == null) return List.of();
-        String tail = conversation.length() <= DOCS_QUERY_CHARS ? conversation
-                : conversation.substring(conversation.length() - DOCS_QUERY_CHARS);
-        return docs.search(tail, null, DOCS_PASSAGES).stream()
+        // The opening usually states the problem; the tail says where the attendance is now.
+        String query = conversation.length() <= DOCS_OPENING_CHARS + DOCS_QUERY_CHARS ? conversation
+                : conversation.substring(0, DOCS_OPENING_CHARS) + "\n"
+                + conversation.substring(conversation.length() - DOCS_QUERY_CHARS);
+        return docs.search(query, null, DOCS_PASSAGES).stream()
                 .filter(hit -> hit.matchedTerms() >= DOCS_MIN_MATCHED_TERMS)
                 .toList();
     }
