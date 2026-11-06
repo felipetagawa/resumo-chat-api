@@ -110,6 +110,20 @@ class ClaudeServiceTest {
     }
 
     @Test
+    void aDiscardedReplyLogsWhyWithoutItsContent() {
+        String[][] cases = {{"- Verifique a chave de acesso na SEFAZ e confi", "max_tokens", "max_tokens"},
+                {"segredo do cliente", "refusal", "refusal"}, {"  ", "end_turn", "empty"}};
+        for (String[] c : cases) {
+            reply(c[0], c[1]);
+            List<String> logs = logsOf(() -> assertTrue(once().isEmpty()));
+            assertTrue(logs.contains("claude_reply_rejected feature=test reason=" + c[2]), logs.toString());
+            if (!c[0].isBlank()) assertTrue(logs.stream().noneMatch(l -> l.contains(c[0])), "never log content: " + logs);
+        }
+        reply("NF-e rejeição 539", "end_turn");
+        assertTrue(logsOf(this::once).stream().noneMatch(l -> l.startsWith("claude_reply_rejected")));
+    }
+
+    @Test
     void theProblemLineStillRejectsAReplyCutAtMaxTokens() {
         reply("NF-e rejeição", "max_tokens");
         assertTrue(service().generateOnceWithoutThinking("sys", TURNS, 128, Duration.ofSeconds(3), "problem_line").isEmpty());

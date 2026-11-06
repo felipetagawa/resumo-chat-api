@@ -80,6 +80,22 @@ class SummaryServiceTest {
         assertEquals("resumo gemini", new SummaryService(gemini, claude).summarize("chat", null));
     }
 
+    @Test void aSummaryMissingASectionIsLoggedAsRejectedWithoutItsContent() {
+        ClaudeService claude = mock(ClaudeService.class);
+        when(claude.generateOnce(anyString(), anyList(), anyLong(), any(Duration.class), anyString()))
+                .thenReturn(Optional.of(FULL_SUMMARY.replace("**MÓDULO:**", "MÓDULO:")));
+        GeminiService gemini = mock(GeminiService.class);
+        when(gemini.generateSummary("chat", null)).thenReturn("resumo gemini");
+        var logger = (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(SummaryService.class);
+        var appender = new ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent>();
+        appender.start(); logger.addAppender(appender);
+        try {
+            assertEquals("resumo gemini", new SummaryService(gemini, claude).summarize("chat", null));
+            var logs = appender.list.stream().map(ch.qos.logback.classic.spi.ILoggingEvent::getFormattedMessage).toList();
+            assertEquals(List.of("claude_reply_rejected feature=summary reason=missing_section"), logs);
+        } finally { logger.detachAppender(appender); appender.stop(); }
+    }
+
     @Test void geminiSummarizesWhenClaudeDropsTheBoldLabelsTheServerParses() {
         ClaudeService claude = mock(ClaudeService.class);
         when(claude.generateOnce(anyString(), anyList(), anyLong(), any(Duration.class), anyString()))

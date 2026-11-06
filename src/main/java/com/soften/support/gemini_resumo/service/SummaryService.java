@@ -6,6 +6,8 @@ import com.soften.support.gemini_resumo.models.enums.ModulesCalled;
 import com.soften.support.gemini_resumo.models.enums.MoodClient;
 import com.soften.support.gemini_resumo.utils.ModuleMapper;
 import com.soften.support.gemini_resumo.docs.ClaudeService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -17,6 +19,8 @@ import java.util.stream.Collectors;
 
 @Service
 public class SummaryService {
+
+    private static final Logger log = LoggerFactory.getLogger(SummaryService.class);
 
     // Room for low-effort thinking plus a long summary (~1k tokens); billed only on what is used.
     static final long CLAUDE_MAX_TOKENS = 4096;
@@ -46,12 +50,14 @@ public class SummaryService {
         String summary = claude == null ? null : claude.generateOnce(GeminiService.createSummaryPrompt(),
                 List.of(new ClaudeService.Turn(true, GeminiService.buildSummaryInput(textService, promptComplement))),
                 CLAUDE_MAX_TOKENS, CLAUDE_TIMEOUT, "summary")
-                .filter(SummaryService::hasEverySection).orElse(null);
+                .filter(SummaryService::hasEverySectionOrLog).orElse(null);
         return summary != null ? summary : geminiService.generateSummary(textService, promptComplement);
     }
 
-    private static boolean hasEverySection(String summary) {
-        return SECTIONS.stream().allMatch(label -> summary.contains("**" + label + "**"));
+    private static boolean hasEverySectionOrLog(String summary) {
+        if (SECTIONS.stream().allMatch(label -> summary.contains("**" + label + "**"))) return true;
+        log.info("claude_reply_rejected feature=summary reason=missing_section");
+        return false;
     }
 
     public FormatSummary extractFieldsFromSummary(String summaryComplete) {

@@ -108,18 +108,25 @@ public class ClaudeService {
             log.info("claude_usage feature={} model={} stop={} inputTokens={} outputTokens={} cacheRead={} durationMs={}",
                     feature, model, stop, response.usage().inputTokens(), response.usage().outputTokens(),
                     response.usage().cacheReadInputTokens().orElse(0L), ms);
-            if (response.stopReason().map(StopReason.REFUSAL::equals).orElse(false)) return Optional.empty();
-            if (onlyComplete && response.stopReason().map(StopReason.MAX_TOKENS::equals).orElse(false)) return Optional.empty();
+            if (response.stopReason().map(StopReason.REFUSAL::equals).orElse(false)) return rejected(feature, "refusal");
+            if (onlyComplete && response.stopReason().map(StopReason.MAX_TOKENS::equals).orElse(false))
+                return rejected(feature, "max_tokens");
             String text = response.content().stream()
                     .flatMap(block -> block.text().stream())
                     .map(TextBlock::text)
                     .collect(Collectors.joining()).trim();
-            return text.isEmpty() ? Optional.empty() : Optional.of(text);
+            return text.isEmpty() ? rejected(feature, "empty") : Optional.of(text);
         } catch (Exception e) {
             // Never log request content; the class name is enough to tell timeout from auth or 5xx.
             log.warn("Claude call failed. feature={} model={} error={} durationMs={}", feature, model,
                     e.getClass().getSimpleName(), Duration.ofNanos(System.nanoTime() - started).toMillis());
             return Optional.empty();
         }
+    }
+
+    /** A reply that came back but is not used: the caller falls back to Gemini. Never logs content. */
+    private static Optional<String> rejected(String feature, String reason) {
+        log.info("claude_reply_rejected feature={} reason={}", feature, reason);
+        return Optional.empty();
     }
 }
