@@ -89,6 +89,32 @@ class ClaudeServiceTest {
         assertEquals("claude-sonnet-5-5", claude.model(), "docs chat reports the model that answered it");
     }
 
+    @Test
+    void theProblemLineTurnsThinkingOffWhileSummaryAndTipsKeepTheModelDefault() {
+        reply("NF-e rejeição 539", "end_turn");
+        ClaudeService claude = service("claude-sonnet-5-5", "claude-haiku-5-5");
+
+        assertEquals(Optional.of("NF-e rejeição 539"),
+                claude.generateOnceWithoutThinking("sys", TURNS, 128, Duration.ofSeconds(3), "problem_line"));
+        JSONObject label = new JSONObject(lastRequest);
+        assertEquals("disabled", label.getJSONObject("thinking").getString("type"));
+        // Haiku 5.5 accepts thinking off only at effort high or below.
+        assertEquals("low", label.getJSONObject("output_config").getString("effort"));
+        assertEquals("claude-haiku-5-5", label.getString("model"));
+        assertEquals(1, requests.get(), "one attempt, like generateOnce");
+
+        claude.generateOnce("sys", TURNS, 64, Duration.ofSeconds(3), "summary");
+        assertFalse(new JSONObject(lastRequest).has("thinking"));
+        claude.generate("sys", TURNS, 64, Duration.ofSeconds(3), "smart_reply");
+        assertFalse(new JSONObject(lastRequest).has("thinking"));
+    }
+
+    @Test
+    void theProblemLineStillRejectsAReplyCutAtMaxTokens() {
+        reply("NF-e rejeição", "max_tokens");
+        assertTrue(service().generateOnceWithoutThinking("sys", TURNS, 128, Duration.ofSeconds(3), "problem_line").isEmpty());
+    }
+
     private Optional<String> once() { return service().generateOnce("sys", TURNS, 64, Duration.ofSeconds(3), "test"); }
 
     @Test

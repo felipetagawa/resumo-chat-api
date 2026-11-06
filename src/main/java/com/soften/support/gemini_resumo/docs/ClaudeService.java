@@ -10,6 +10,7 @@ import com.anthropic.models.messages.OutputConfig;
 import com.anthropic.models.messages.StopReason;
 import com.anthropic.models.messages.TextBlock;
 import com.anthropic.models.messages.TextBlockParam;
+import com.anthropic.models.messages.ThinkingConfigDisabled;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -65,16 +66,24 @@ public class ClaudeService {
      * Gemini writes it whole, as its own path already rejects MAX_TOKENS. Answered by {@code bulkModel}.
      */
     public Optional<String> generateOnce(String system, List<Turn> turns, long maxTokens, Duration timeout, String feature) {
-        return call(onceClient, bulkModel, true, system, turns, maxTokens, timeout, feature);
+        return call(onceClient, bulkModel, true, true, system, turns, maxTokens, timeout, feature);
+    }
+
+    /**
+     * {@link #generateOnce} for a reply of a few words: Haiku 5.5 thinks by default, and thinking adds
+     * latency and counts toward {@code maxTokens}. Turning it off is accepted only at effort high or below.
+     */
+    public Optional<String> generateOnceWithoutThinking(String system, List<Turn> turns, long maxTokens, Duration timeout, String feature) {
+        return call(onceClient, bulkModel, true, false, system, turns, maxTokens, timeout, feature);
     }
 
     /** Up to two attempts (the SDK retries once), each within {@code timeout}. */
     public Optional<String> generate(String system, List<Turn> turns, long maxTokens, Duration timeout, String feature) {
-        return call(client, model, false, system, turns, maxTokens, timeout, feature);
+        return call(client, model, false, true, system, turns, maxTokens, timeout, feature);
     }
 
-    private Optional<String> call(AnthropicClient client, String model, boolean onlyComplete, String system, List<Turn> turns,
-                                  long maxTokens, Duration timeout, String feature) {
+    private Optional<String> call(AnthropicClient client, String model, boolean onlyComplete, boolean thinking, String system,
+                                  List<Turn> turns, long maxTokens, Duration timeout, String feature) {
         if (client == null || turns.isEmpty()) return Optional.empty();
         long started = System.nanoTime();
         try {
@@ -86,6 +95,8 @@ public class ClaudeService {
                             .cacheControl(CacheControlEphemeral.builder().build()).build()))
                     // Short answers to support questions: low effort keeps latency down.
                     .outputConfig(OutputConfig.builder().effort(OutputConfig.Effort.LOW).build());
+            // Without .thinking(...) the model's default applies (adaptive on Haiku 5.5).
+            if (!thinking) params.thinking(ThinkingConfigDisabled.builder().build());
             for (Turn turn : turns) {
                 if (turn.fromUser()) params.addUserMessage(turn.text());
                 else params.addAssistantMessage(turn.text());

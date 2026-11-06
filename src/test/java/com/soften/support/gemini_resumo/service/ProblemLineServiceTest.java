@@ -25,17 +25,23 @@ class ProblemLineServiceTest {
     @SuppressWarnings("unchecked")
     @Test void claudeWritesTheLabelWithTheSamePolicyAndGeminiIsNotCalled() {
         ClaudeService claude = configuredClaude();
-        when(claude.generateOnce(anyString(), anyList(), anyLong(), any(Duration.class), eq("problem_line")))
+        when(claude.generateOnceWithoutThinking(anyString(), anyList(), anyLong(), any(Duration.class), eq("problem_line")))
                 .thenReturn(Optional.of("NF-e rejeição 539"));
         GeminiService gemini = mock(GeminiService.class);
 
         assertEquals("NF-e rejeição 539", new ProblemLineService(gemini, claude).line("rejeição 539 ao emitir"));
 
         ArgumentCaptor<List<ClaudeService.Turn>> turns = ArgumentCaptor.forClass(List.class);
-        verify(claude).generateOnce(eq(GeminiService.PROBLEM_LINE_POLICY), turns.capture(),
+        verify(claude).generateOnceWithoutThinking(eq(GeminiService.PROBLEM_LINE_POLICY), turns.capture(),
                 eq(ProblemLineService.CLAUDE_MAX_TOKENS), eq(ProblemLineService.CLAUDE_TIMEOUT), eq("problem_line"));
         assertEquals(List.of(new ClaudeService.Turn(true, "MENSAGENS DO CLIENTE:\nrejeição 539 ao emitir")), turns.getValue());
         verifyNoInteractions(gemini);
+    }
+
+    @Test void theClaudeBudgetFitsAShortLabelWithThinkingOff() {
+        // ~10 tokens of label, plus room for a preamble or a line of explanation the controller drops.
+        assertTrue(ProblemLineService.CLAUDE_MAX_TOKENS >= 64 && ProblemLineService.CLAUDE_MAX_TOKENS <= 128,
+                "max tokens " + ProblemLineService.CLAUDE_MAX_TOKENS);
     }
 
     @Test void geminiKeepsItsTwoAttemptsWhenClaudeIsNotConfigured() {
@@ -51,7 +57,7 @@ class ProblemLineServiceTest {
 
     @Test void afterClaudeFailsOrTimesOutGeminiGetsASingleAttempt() {
         ClaudeService claude = configuredClaude();
-        when(claude.generateOnce(anyString(), anyList(), anyLong(), any(Duration.class), anyString()))
+        when(claude.generateOnceWithoutThinking(anyString(), anyList(), anyLong(), any(Duration.class), anyString()))
                 .thenReturn(Optional.empty());
         GeminiService gemini = mock(GeminiService.class);
         when(gemini.generateProblemLine("erro no xml", 1)).thenReturn("Erro no XML");
