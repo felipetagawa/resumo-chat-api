@@ -88,6 +88,6 @@ class SmartReplyContractTest {
     @Test void clicheOnlyReplyAsksForAnotherWording() throws Exception {
         when(gemini.generateInteractive(anyString(), anyString(), anyBoolean())).thenReturn("Fico à disposição!");
         send(Map.of("conversation", "oi")).andExpect(status().isBadGateway())
-                .andExpect(jsonPath("$.erro").value("Não saiu uma boa sugestão. Tente ↻ Outra."));
+                .andExpect(jsonPath("$.erro").value("Não saiu uma boa sugestão. Tente de novo."));
     }
 }

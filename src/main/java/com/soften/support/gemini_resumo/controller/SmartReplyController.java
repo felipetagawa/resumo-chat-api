@@ -21,7 +21,7 @@ public class SmartReplyController {
         try { return ResponseEntity.ok(service.reply(request)); }
         catch (IllegalArgumentException e) { return ResponseEntity.badRequest().body(Map.of("erro","Contexto ou perfil inválido.")); }
         catch (SmartReplyRejectedException e) {
-            return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(Map.of("erro","Não saiu uma boa sugestão. Tente ↻ Outra."));
+            return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(Map.of("erro","Não saiu uma boa sugestão. Tente de novo."));
         }
         catch (GeminiIntegrationException e) {
             return ResponseEntity.status(e.getHttpStatus()).body(Map.of("erro","Não foi possível sugerir uma resposta. Tente novamente."));
