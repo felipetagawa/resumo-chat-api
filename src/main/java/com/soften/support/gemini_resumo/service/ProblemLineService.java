@@ -13,7 +13,7 @@ public class ProblemLineService {
 
     // The label is ~10 tokens; the rest is room for low-effort thinking. The controller cuts it to 32 chars.
     static final long CLAUDE_MAX_TOKENS = 512;
-    // The extension aborts at 10s: Claude plus its one retry, then Gemini, must fit.
+    // The extension aborts at 10s: one Claude attempt, then one Gemini attempt (connect + read), must fit.
     static final Duration CLAUDE_TIMEOUT = Duration.ofSeconds(3);
 
     private final GeminiService gemini;
@@ -28,9 +28,11 @@ public class ProblemLineService {
     }
 
     public String line(String messages) {
-        String raw = claude == null ? null : claude.generate(GeminiService.PROBLEM_LINE_POLICY,
-                List.of(new ClaudeService.Turn(true, "MENSAGENS DO CLIENTE:\n" + messages)),
-                CLAUDE_MAX_TOKENS, CLAUDE_TIMEOUT, "problem_line").orElse(null);
-        return raw != null ? raw : gemini.generateProblemLine(messages);
+        if (claude == null || !claude.isConfigured()) return gemini.generateProblemLine(messages);
+        return claude.generateOnce(GeminiService.PROBLEM_LINE_POLICY,
+                        List.of(new ClaudeService.Turn(true, "MENSAGENS DO CLIENTE:\n" + messages)),
+                        CLAUDE_MAX_TOKENS, CLAUDE_TIMEOUT, "problem_line")
+                // Claude already spent up to CLAUDE_TIMEOUT: a second Gemini attempt would pass the 10s abort.
+                .orElseGet(() -> gemini.generateProblemLine(messages, 1));
     }
 }

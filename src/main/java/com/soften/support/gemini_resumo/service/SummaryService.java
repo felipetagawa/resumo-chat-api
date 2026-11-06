@@ -13,18 +13,22 @@ import java.time.Duration;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 @Service
 public class SummaryService {
 
     // Room for low-effort thinking plus a long summary (~1k tokens); billed only on what is used.
     static final long CLAUDE_MAX_TOKENS = 4096;
-    // Gemini gets 8s per attempt for the same job; the SDK retries once, so ~24s at worst before Gemini.
+    // Gemini gets 8s per attempt for the same job. One Claude attempt, so 12s at worst before Gemini.
     static final Duration CLAUDE_TIMEOUT = Duration.ofSeconds(12);
     // Every label the prompt asks for, bold as extractFieldsFromSummary expects. MÓDULO comes last,
     // so a reply cut at max_tokens misses it.
     private static final List<String> SECTIONS = List.of("PROBLEMA / DÚVIDA:", "SOLUÇÃO APRESENTADA:",
             "OPORTUNIDADE DE UPSELL:", "PRINTS DE ERRO OU DE MENSAGENS RELEVANTES:", "HUMOR DO CLIENTE:", "MÓDULO:");
+    // A field ends at the next of those labels, not at any '**': Claude bolds words inside values.
+    private static final String NEXT_LABEL = SECTIONS.stream().map(label -> Pattern.quote("**" + label + "**"))
+            .collect(Collectors.joining("|", "(?=", "|$)"));
 
     private final GeminiService geminiService;
     private final ClaudeService claude;
@@ -39,7 +43,7 @@ public class SummaryService {
 
     /** Gerar resumo and Processar dica: Claude first when configured; Gemini answers when it is absent, slow, failing or off-format. */
     public String summarize(String textService, String promptComplement) {
-        String summary = claude == null ? null : claude.generate(GeminiService.createSummaryPrompt(),
+        String summary = claude == null ? null : claude.generateOnce(GeminiService.createSummaryPrompt(),
                 List.of(new ClaudeService.Turn(true, GeminiService.buildSummaryInput(textService, promptComplement))),
                 CLAUDE_MAX_TOKENS, CLAUDE_TIMEOUT, "summary")
                 .filter(SummaryService::hasEverySection).orElse(null);
@@ -51,12 +55,14 @@ public class SummaryService {
     }
 
     public FormatSummary extractFieldsFromSummary(String summaryComplete) {
-        String problem = extractField(summaryComplete, "\\*\\*PROBLEMA / DÚVIDA:\\*\\*\\s*([\\s\\S]*?)(?=\\*\\*|$)");
-        String solution = extractField(summaryComplete, "\\*\\*SOLUÇÃO APRESENTADA:\\*\\*\\s*([\\s\\S]*?)(?=\\*\\*|$)");
-        String upsell = extractField(summaryComplete, "\\*\\*OPORTUNIDADE DE UPSELL:\\*\\*\\s*([\\s\\S]*?)(?=\\*\\*|$)");
-        String prints = extractField(summaryComplete, "\\*\\*PRINTS DE ERRO OU DE MENSAGENS RELEVANTES:\\*\\*\\s*([\\s\\S]*?)(?=\\*\\*|$)");
-        String humor = extractField(summaryComplete, "\\*\\*HUMOR DO CLIENTE:\\*\\*\\s*([\\s\\S]*?)(?=\\*\\*|$)");
-        String module = extractField(summaryComplete, "\\*\\*MÓDULO:\\*\\*\\s*([\\s\\S]*?)(?=\\*\\*|$)");
+        String problem = extractField(summaryComplete, "PROBLEMA / DÚVIDA:");
+        String solution = extractField(summaryComplete, "SOLUÇÃO APRESENTADA:");
+        String upsell = extractField(summaryComplete, "OPORTUNIDADE DE UPSELL:");
+        String prints = extractField(summaryComplete, "PRINTS DE ERRO OU DE MENSAGENS RELEVANTES:");
+        String humor = extractField(summaryComplete, "HUMOR DO CLIENTE:");
+        // The module is one category; a note the model adds below it must not be mapped.
+        String module = extractField(summaryComplete, "MÓDULO:").lines()
+                .map(String::trim).filter(line -> !line.isEmpty()).findFirst().orElse("");
 
         boolean printsFlag = prints.trim().toLowerCase().startsWith("sim");
         MoodClient mood = mapMood(humor);
@@ -85,11 +91,10 @@ public class SummaryService {
         );
     }
 
-    private String extractField(String text, String regex) {
-        Pattern p = Pattern.compile(regex);
-        Matcher m = p.matcher(text);
-        if (m.find()) return m.group(1).trim();
-        return "";
+    private String extractField(String text, String label) {
+        Matcher m = Pattern.compile(Pattern.quote("**" + label + "**") + "\\s*([\\s\\S]*?)" + NEXT_LABEL).matcher(text);
+        // Bold kept inside a value (e.g. **NEUTRO.**) would show up as asterisks in Processar dica.
+        return m.find() ? m.group(1).replace("**", "").trim() : "";
     }
 
     private MoodClient mapMood(String humor) {

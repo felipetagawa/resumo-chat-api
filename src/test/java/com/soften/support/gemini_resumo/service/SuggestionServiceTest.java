@@ -106,14 +106,14 @@ class SuggestionServiceTest {
     @Test
     void claudeWritesTheTipsFromTheSamePromptAndGeminiIsNotCalled() {
         ClaudeService claude = mock(ClaudeService.class);
-        when(claude.generate(anyString(), anyList(), anyLong(), any(Duration.class), eq("tips")))
+        when(claude.generateOnce(anyString(), anyList(), anyLong(), any(Duration.class), eq("tips")))
                 .thenReturn(Optional.of("- Verifique o retorno da SEFAZ.\n- Confira o ambiente de emissão."));
 
         assertEquals(List.of("Verifique o retorno da SEFAZ.", "Confira o ambiente de emissão."),
                 new SuggestionService(gemini, claude).generateTips("Atendimento atual", summary));
 
         ArgumentCaptor<List<ClaudeService.Turn>> turns = ArgumentCaptor.forClass(List.class);
-        verify(claude).generate(eq(SuggestionService.TIPS_POLICY), turns.capture(),
+        verify(claude).generateOnce(eq(SuggestionService.TIPS_POLICY), turns.capture(),
                 eq(SuggestionService.CLAUDE_MAX_TOKENS), eq(SuggestionService.CLAUDE_TIMEOUT), eq("tips"));
         assertEquals(1, turns.getValue().size());
         assertTrue(turns.getValue().get(0).fromUser());
@@ -125,7 +125,7 @@ class SuggestionServiceTest {
     @Test
     void geminiGetsTheUnchangedPromptWhenClaudeFails() {
         ClaudeService claude = mock(ClaudeService.class);
-        when(claude.generate(anyString(), anyList(), anyLong(), any(Duration.class), anyString()))
+        when(claude.generateOnce(anyString(), anyList(), anyLong(), any(Duration.class), anyString()))
                 .thenReturn(Optional.empty());
         when(gemini.ask(anyString())).thenReturn("- Confira o ambiente de emissão.");
 
@@ -133,7 +133,7 @@ class SuggestionServiceTest {
                 new SuggestionService(gemini, claude).generateTips("Atendimento atual", summary));
 
         ArgumentCaptor<List<ClaudeService.Turn>> turns = ArgumentCaptor.forClass(List.class);
-        verify(claude).generate(anyString(), turns.capture(), anyLong(), any(Duration.class), anyString());
+        verify(claude).generateOnce(anyString(), turns.capture(), anyLong(), any(Duration.class), anyString());
         ArgumentCaptor<String> prompt = ArgumentCaptor.forClass(String.class);
         verify(gemini).ask(prompt.capture());
         assertTrue(prompt.getValue().startsWith("Você é um analista técnico de suporte."));

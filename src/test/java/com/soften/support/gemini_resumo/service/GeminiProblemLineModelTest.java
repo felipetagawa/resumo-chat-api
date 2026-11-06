@@ -3,13 +3,16 @@ package com.soften.support.gemini_resumo.service;
 import com.soften.support.gemini_resumo.config.GeminiApiProperties;
 import org.json.JSONObject;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.mock.http.client.MockClientHttpRequest;
+import org.springframework.test.web.client.ExpectedCount;
 import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestTemplate;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.mock;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
+import static org.springframework.test.web.client.response.MockRestResponseCreators.withStatus;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
 class GeminiProblemLineModelTest {
@@ -47,6 +50,18 @@ class GeminiProblemLineModelTest {
             }).andRespond(withSuccess("{\"candidates\":[{\"finishReason\":\"STOP\",\"content\":{\"parts\":[{\"text\":\"NF-e rejeição 539\"}]}}]}",
                 MediaType.APPLICATION_JSON));
         assertEquals("NF-e rejeição 539", service.generateProblemLine("rejeição 539"));
+        server.verify();
+    }
+    @Test void afterClaudeFailedTheLabelGetsASingleGeminiAttempt() {
+        var p = new GeminiApiProperties();
+        p.setKey("dummy");
+        var interactive = new RestTemplate();
+        var server = MockRestServiceServer.bindTo(interactive).build();
+        var service = new GeminiService(p, new RestTemplate(), mock(GoogleFileSearchService.class), interactive);
+        // 503 is retryable: with the default two attempts a second request would reach the server.
+        server.expect(ExpectedCount.once(), requestTo("https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash-lite:generateContent?key=dummy"))
+            .andRespond(withStatus(HttpStatus.SERVICE_UNAVAILABLE));
+        assertThrows(GeminiIntegrationException.class, () -> service.generateProblemLine("erro no xml", 1));
         server.verify();
     }
     @Test void v1betaStillSwitchesThinkingOff() {

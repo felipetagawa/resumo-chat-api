@@ -2,6 +2,7 @@ package com.soften.support.gemini_resumo.controller;
 import com.soften.support.gemini_resumo.dto.*;
 import com.soften.support.gemini_resumo.service.*;
 import jakarta.validation.Valid;
+import java.util.List;
 import java.util.Map;
 import org.springframework.http.*;
 import org.springframework.web.bind.annotation.*;
@@ -26,8 +27,13 @@ public class ProblemLineController {
         }
     }
     static String normalize(String raw) {
-        String line = raw == null ? "" : raw.replaceAll("\\s+", " ").trim()
-                .replaceAll("^[\"'“”]+|[\"'“”]+$", "").replaceAll("\\.+$", "").trim();
+        List<String> lines = (raw == null ? "" : raw).lines().map(String::trim).filter(l -> !l.isEmpty()).toList();
+        // Drop a preamble line ("Aqui está o rótulo:") before the label; a label split across lines is joined.
+        String text = String.join(" ", lines.size() > 1 ? lines.stream().filter(l -> !l.endsWith(":")).toList() : lines);
+        String line = text.replace("**", "").replace("`", "").replaceAll("^#+\\s*", "")
+                .replaceAll("(?iu)^(?:rótulo|etiqueta|label)\\s*:\\s*", "")
+                .replaceAll("\\s+", " ").trim()
+                .replaceAll("^[\"'“”*]+|[\"'“”*]+$", "").replaceAll("\\.+$", "").trim();
         if (line.equalsIgnoreCase("SEM_PROBLEMA")) return "";
         if (line.length() <= LIMIT) return line;
         String cut = line.substring(0, LIMIT - 1);

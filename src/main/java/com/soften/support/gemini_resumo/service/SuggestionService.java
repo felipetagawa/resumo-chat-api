@@ -48,7 +48,7 @@ public class SuggestionService {
                 + safe(analysis.fullSummary()) + "\n\nATENDIMENTO ATUAL:\n" + safe(currentConversation);
 
         // Claude first when configured; Gemini answers when it is absent, slow or failing.
-        String answer = claude == null ? null : claude.generate(TIPS_POLICY,
+        String answer = claude == null ? null : claude.generateOnce(TIPS_POLICY,
                 List.of(new ClaudeService.Turn(true, data)), CLAUDE_MAX_TOKENS, CLAUDE_TIMEOUT, "tips").orElse(null);
         if (answer == null) answer = geminiService.ask(TIPS_POLICY + data);
         if (answer == null || answer.isBlank()) {

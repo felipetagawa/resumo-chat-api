@@ -11,6 +11,8 @@ import java.time.Duration;
 @Configuration
 public class RestTemplateConfig {
 
+    public static final Duration SMART_REPLY_CONNECT_TIMEOUT = Duration.ofMillis(1500);
+
     @Bean
     @Primary
     public RestTemplate geminiRestTemplate(RestTemplateBuilder builder, GeminiApiProperties properties) {
@@ -25,6 +27,6 @@ public class RestTemplateConfig {
 
     @Bean
     public RestTemplate smartReplyRestTemplate(RestTemplateBuilder builder, GeminiApiProperties properties) {
-        return builder.setConnectTimeout(Duration.ofMillis(1500)).setReadTimeout(Duration.ofMillis(properties.getSafeSmartReplyReadTimeoutMillis())).build();
+        return builder.setConnectTimeout(SMART_REPLY_CONNECT_TIMEOUT).setReadTimeout(Duration.ofMillis(properties.getSafeSmartReplyReadTimeoutMillis())).build();
     }
 }

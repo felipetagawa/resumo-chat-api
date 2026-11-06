@@ -245,6 +245,11 @@ public class GeminiService {
             descreverem nenhum problema, responda apenas SEM_PROBLEMA""";
 
     public String generateProblemLine(String messages) {
+        return generateProblemLine(messages, 2);
+    }
+
+    // ProblemLineService asks for one attempt once Claude has already used part of the extension's 10s.
+    String generateProblemLine(String messages, int maxAttempts) {
         JSONObject body = buildGenerateContentBody(PROBLEM_LINE_POLICY + "\n\nMENSAGENS DO CLIENTE:\n" + messages);
         JSONObject config = body.getJSONObject("generationConfig");
         config.put("temperature", 0.2);
@@ -263,7 +268,7 @@ public class GeminiService {
             config.put("thinkingConfig", new JSONObject().put("thinkingLevel", "LOW"));
         }
         return extractInteractiveText(executeGenerateContent(body, interactiveTemplate,
-                Math.min(2, properties.getSafeMaxAttempts()), true, model, "problem_line"));
+                Math.max(1, Math.min(maxAttempts, properties.getSafeMaxAttempts())), true, model, "problem_line"));
     }
 
     private String extractInteractiveText(String json) {

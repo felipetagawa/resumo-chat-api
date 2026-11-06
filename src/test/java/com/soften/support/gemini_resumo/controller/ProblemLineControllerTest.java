@@ -55,4 +55,19 @@ class ProblemLineControllerTest {
         assertEquals("Certificado novo não emite…", ProblemLineController.normalize("Certificado novo não emite DANFE no PDV"));
         assertEquals("NF-e rejeição 539", ProblemLineController.normalize("NF-e rejeição 539."));
     }
+    @Test void normalizeDropsMarkdown() {
+        assertEquals("Certificado vencido", ProblemLineController.normalize("**Certificado vencido**"));
+        assertEquals("NF-e rejeição 539", ProblemLineController.normalize("`NF-e rejeição 539`"));
+        assertEquals("Boleto não gera", ProblemLineController.normalize("# Boleto não gera"));
+        assertEquals("", ProblemLineController.normalize("**SEM_PROBLEMA**"));
+    }
+    @Test void normalizeDropsALabelPreamble() {
+        assertEquals("NF-e rejeição 539", ProblemLineController.normalize("Rótulo: NF-e rejeição 539"));
+        assertEquals("NF-e rejeição 539", ProblemLineController.normalize("Aqui está o rótulo:\nNF-e rejeição 539"));
+        // A colon inside the label itself stays.
+        assertEquals("Erro: XML inválido", ProblemLineController.normalize("Erro: XML inválido"));
+    }
+    @Test void normalizeStillJoinsALabelSplitAcrossLines() {
+        assertEquals("NF-e rejeição 539", ProblemLineController.normalize("NF-e rejeição\n539"));
+    }
 }

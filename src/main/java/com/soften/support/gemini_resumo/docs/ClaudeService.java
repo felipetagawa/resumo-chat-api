@@ -33,25 +33,42 @@ public class ClaudeService {
     private static final Logger log = LoggerFactory.getLogger(ClaudeService.class);
 
     private final AnthropicClient client;
+    // Same connection pool, no SDK retry: a retry would also wait out Retry-After (up to 60s) first.
+    private final AnthropicClient onceClient;
     private final String model;
 
     @Autowired
     public ClaudeService(@Value("${anthropic.api.key:}") String key,
                          @Value("${anthropic.api.model:claude-haiku-5-5}") String model) {
-        this.model = model;
-        this.client = key == null || key.isBlank() ? null
-                : AnthropicOkHttpClient.builder().apiKey(key.trim()).maxRetries(1).build();
+        this(key == null || key.isBlank() ? null
+                : AnthropicOkHttpClient.builder().apiKey(key.trim()).maxRetries(1).build(), model);
     }
 
     ClaudeService(AnthropicClient client, String model) {
         this.client = client;
+        this.onceClient = client == null ? null : client.withOptions(options -> options.maxRetries(0));
         this.model = model;
     }
 
     public boolean isConfigured() { return client != null; }
     public String model() { return model; }
 
+    /**
+     * One attempt within {@code timeout}, for callers whose fallback is Gemini: retrying Claude
+     * would only spend the time Gemini needs. A reply cut at {@code maxTokens} is empty too, so
+     * Gemini writes it whole, as its own path already rejects MAX_TOKENS.
+     */
+    public Optional<String> generateOnce(String system, List<Turn> turns, long maxTokens, Duration timeout, String feature) {
+        return call(onceClient, true, system, turns, maxTokens, timeout, feature);
+    }
+
+    /** Up to two attempts (the SDK retries once), each within {@code timeout}. */
     public Optional<String> generate(String system, List<Turn> turns, long maxTokens, Duration timeout, String feature) {
+        return call(client, false, system, turns, maxTokens, timeout, feature);
+    }
+
+    private Optional<String> call(AnthropicClient client, boolean onlyComplete, String system, List<Turn> turns,
+                                  long maxTokens, Duration timeout, String feature) {
         if (client == null || turns.isEmpty()) return Optional.empty();
         long started = System.nanoTime();
         try {
@@ -75,6 +92,7 @@ public class ClaudeService {
                     feature, model, stop, response.usage().inputTokens(), response.usage().outputTokens(),
                     response.usage().cacheReadInputTokens().orElse(0L), ms);
             if (response.stopReason().map(StopReason.REFUSAL::equals).orElse(false)) return Optional.empty();
+            if (onlyComplete && response.stopReason().map(StopReason.MAX_TOKENS::equals).orElse(false)) return Optional.empty();
             String text = response.content().stream()
                     .flatMap(block -> block.text().stream())
                     .map(TextBlock::text)
