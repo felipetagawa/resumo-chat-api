@@ -111,6 +111,25 @@ class SmartReplyChatTest {
         assertTrue(response.sources().isEmpty(), "numbers come from the last control line");
     }
 
+    @Test void anInlineControlLineAtTheEndIsStrippedToo() throws Exception {
+        var inline = run(request(CUSTOMER_539, null, List.of()), "Consulte a chave na SEFAZ. FONTES: 1");
+        assertEquals("Consulte a chave na SEFAZ.", ((SmartReplyResponse) inline[0]).reply());
+        assertEquals(List.of(MANUAL_539), urls((SmartReplyResponse) inline[0]));
+
+        var none = run(request(CUSTOMER_539, null, List.of()), "Me manda um print? fontes: nenhuma");
+        assertEquals("Me manda um print?", ((SmartReplyResponse) none[0]).reply());
+        assertTrue(((SmartReplyResponse) none[0]).sources().isEmpty());
+    }
+
+    @Test void aCustomerFacingFontesLineIsNotAControlLine() throws Exception {
+        var out = run(request(CUSTOMER_539, null, List.of()), "Fontes: portal da SEFAZ e manual do sistema.\nMe avisa se der certo.");
+        assertEquals("Fontes: portal da SEFAZ e manual do sistema.\nMe avisa se der certo.", ((SmartReplyResponse) out[0]).reply());
+        assertTrue(((SmartReplyResponse) out[0]).sources().isEmpty());
+
+        var words = run(request(CUSTOMER_539, null, List.of()), "Confira nas fontes: do portal.");
+        assertEquals("Confira nas fontes: do portal.", ((SmartReplyResponse) words[0]).reply());
+    }
+
     @Test void geminiFallbackFollowsTheSameRules() throws Exception {
         ClaudeService claude = mock(ClaudeService.class);
         when(claude.generate(anyString(), anyList(), anyLong(), any(Duration.class), anyString())).thenReturn(Optional.empty());

@@ -84,7 +84,11 @@ public class SmartReplyService {
     /** Kinds of message that never need the manual: chasing a reply and saying goodbye. */
     static final Set<String> NO_DOCS_INTENTS = Set.of("cobrar_retorno", "encerrar");
     // The control line naming the passages the model used; never shown to the technician.
-    private static final Pattern SOURCES_LINE = Pattern.compile("(?im)^[ \\t]*fontes[ \\t]*:[^\\n]*(?:\\n|$)");
+    // Only "FONTES: 1,3" / "FONTES: nenhuma" counts: a customer-facing "Fontes: portal da SEFAZ" line stays.
+    private static final String SOURCES_PAYLOAD = "fontes[ \\t]*:[ \\t]*(?:nenhuma|\\d[\\d \\t,e]*?)[ \\t]*";
+    private static final Pattern SOURCES_LINE = Pattern.compile("(?im)^[ \\t]*" + SOURCES_PAYLOAD + "(?:\\n|$)");
+    // Small models sometimes append it to the last sentence instead of a line of its own.
+    private static final Pattern SOURCES_TAIL = Pattern.compile("(?i)[ \\t]+" + SOURCES_PAYLOAD + "$");
     private static final Pattern NUMBER = Pattern.compile("\\d{1,3}");
 
     /** The reply without control lines, and the passage numbers cited on the last one. */
@@ -154,12 +158,18 @@ public class SmartReplyService {
         Matcher m = SOURCES_LINE.matcher(raw);
         String last = null;
         while (m.find()) last = m.group();
+        String text = SOURCES_LINE.matcher(raw).replaceAll("").strip();
+        Matcher tail = SOURCES_TAIL.matcher(text);
+        if (tail.find()) {
+            last = tail.group();
+            text = text.substring(0, tail.start()).strip();
+        }
         Set<Integer> numbers = new LinkedHashSet<>();
         if (last != null) {
             Matcher n = NUMBER.matcher(last.substring(last.indexOf(':') + 1));
             while (n.find()) numbers.add(Integer.parseInt(n.group()));
         }
-        return new Cited(SOURCES_LINE.matcher(raw).replaceAll("").strip(), numbers);
+        return new Cited(text, numbers);
     }
 
     List<DocsIndex.Hit> relevantDocs(String conversation) { return relevantDocs(conversation, null); }
