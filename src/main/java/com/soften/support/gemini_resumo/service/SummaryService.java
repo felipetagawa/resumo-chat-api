@@ -21,7 +21,8 @@ public class SummaryService {
     static final long CLAUDE_MAX_TOKENS = 4096;
     // Gemini gets 8s per attempt for the same job; the SDK retries once, so ~24s at worst before Gemini.
     static final Duration CLAUDE_TIMEOUT = Duration.ofSeconds(12);
-    // Every label the prompt asks for; MÓDULO comes last, so a reply cut at max_tokens misses it.
+    // Every label the prompt asks for, bold as extractFieldsFromSummary expects. MÓDULO comes last,
+    // so a reply cut at max_tokens misses it.
     private static final List<String> SECTIONS = List.of("PROBLEMA / DÚVIDA:", "SOLUÇÃO APRESENTADA:",
             "OPORTUNIDADE DE UPSELL:", "PRINTS DE ERRO OU DE MENSAGENS RELEVANTES:", "HUMOR DO CLIENTE:", "MÓDULO:");
 
@@ -36,7 +37,7 @@ public class SummaryService {
         this.claude = claude;
     }
 
-    /** Gerar resumo: Claude first when configured; Gemini answers when it is absent, slow, failing or off-format. */
+    /** Gerar resumo and Processar dica: Claude first when configured; Gemini answers when it is absent, slow, failing or off-format. */
     public String summarize(String textService, String promptComplement) {
         String summary = claude == null ? null : claude.generate(GeminiService.createSummaryPrompt(),
                 List.of(new ClaudeService.Turn(true, GeminiService.buildSummaryInput(textService, promptComplement))),
@@ -46,13 +47,7 @@ public class SummaryService {
     }
 
     private static boolean hasEverySection(String summary) {
-        String upper = summary.toUpperCase();
-        return SECTIONS.stream().allMatch(upper::contains);
-    }
-
-    // Processar dica stays on Gemini.
-    public String generateFormattedSummary(String textService, String promptComplement) {
-        return geminiService.generateSummary(textService, promptComplement);
+        return SECTIONS.stream().allMatch(label -> summary.contains("**" + label + "**"));
     }
 
     public FormatSummary extractFieldsFromSummary(String summaryComplete) {
@@ -78,7 +73,7 @@ public class SummaryService {
     }
 
     public SummaryDto createDtoSummary(String textCall, String promptComplement) {
-        String summaryComplete = generateFormattedSummary(textCall, promptComplement);
+        String summaryComplete = summarize(textCall, promptComplement);
         FormatSummary formatSummary = extractFieldsFromSummary(summaryComplete);
 
         return new SummaryDto(

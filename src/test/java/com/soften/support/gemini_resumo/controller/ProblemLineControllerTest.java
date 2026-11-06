@@ -16,7 +16,7 @@ class ProblemLineControllerTest {
     ObjectMapper json = new ObjectMapper();
     @BeforeEach void setup() {
         gemini = mock(GeminiService.class);
-        mvc = MockMvcBuilders.standaloneSetup(new ProblemLineController(gemini, new SmartReplyRateLimiter(30))).build();
+        mvc = MockMvcBuilders.standaloneSetup(new ProblemLineController(new ProblemLineService(gemini), new SmartReplyRateLimiter(30))).build();
     }
     ResultActions send(Object body) throws Exception {
         return mvc.perform(post("/api/gemini/linha-problema").contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(body)));
@@ -41,7 +41,7 @@ class ProblemLineControllerTest {
                 .andExpect(jsonPath("$.erro").value("Não foi possível resumir o problema."));
     }
     @Test void sharedLimiter() throws Exception {
-        mvc = MockMvcBuilders.standaloneSetup(new ProblemLineController(gemini, new SmartReplyRateLimiter(1))).build();
+        mvc = MockMvcBuilders.standaloneSetup(new ProblemLineController(new ProblemLineService(gemini), new SmartReplyRateLimiter(1))).build();
         when(gemini.generateProblemLine(anyString())).thenReturn("Erro no XML");
         send(Map.of("mensagens", "erro")).andExpect(status().isOk());
         send(Map.of("mensagens", "erro")).andExpect(status().isTooManyRequests()).andExpect(header().string("Retry-After", "60"));

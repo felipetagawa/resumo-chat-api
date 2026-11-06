@@ -78,6 +78,16 @@ class SummaryServiceTest {
         assertEquals("resumo gemini", new SummaryService(gemini, claude).summarize("chat", null));
     }
 
+    @Test void geminiSummarizesWhenClaudeDropsTheBoldLabelsTheServerParses() {
+        ClaudeService claude = mock(ClaudeService.class);
+        when(claude.generate(anyString(), anyList(), anyLong(), any(Duration.class), anyString()))
+                .thenReturn(Optional.of(FULL_SUMMARY.replace("**", "")));
+        GeminiService gemini = mock(GeminiService.class);
+        when(gemini.generateSummary("chat", null)).thenReturn("resumo gemini");
+
+        assertEquals("resumo gemini", new SummaryService(gemini, claude).summarize("chat", null));
+    }
+
     @Test void geminiErrorsStillReachTheCallerWhenClaudeCannotAnswer() {
         GeminiService gemini = mock(GeminiService.class);
         GeminiIntegrationException unavailable = new GeminiIntegrationException(
@@ -86,5 +96,18 @@ class SummaryServiceTest {
 
         assertSame(unavailable, assertThrows(GeminiIntegrationException.class,
                 () -> new SummaryService(gemini).summarize("chat", null)));
+    }
+
+    @Test void processarDicaSummaryAlsoComesFromClaude() {
+        ClaudeService claude = mock(ClaudeService.class);
+        when(claude.generate(anyString(), anyList(), anyLong(), any(Duration.class), eq("summary")))
+                .thenReturn(Optional.of(FULL_SUMMARY));
+        GeminiService gemini = mock(GeminiService.class);
+
+        var dto = new SummaryService(gemini, claude).createDtoSummary("Cliente: rejeição 539", null);
+
+        assertEquals(FULL_SUMMARY, dto.fullSummary());
+        assertEquals("O cliente tentou emitir a NF-e e recebeu a rejeição 539, impedindo a venda.", dto.problem());
+        verifyNoInteractions(gemini);
     }
 }

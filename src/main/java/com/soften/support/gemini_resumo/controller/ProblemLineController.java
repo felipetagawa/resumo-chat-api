@@ -11,16 +11,16 @@ import org.springframework.web.bind.annotation.*;
 public class ProblemLineController {
     // A queue label: fits the ~286px SZ queue column beside the AnyDesk code.
     static final int LIMIT = 32;
-    private final GeminiService gemini;
+    private final ProblemLineService service;
     private final SmartReplyRateLimiter limiter;
-    public ProblemLineController(GeminiService gemini, SmartReplyRateLimiter limiter) {
-        this.gemini = gemini; this.limiter = limiter;
+    public ProblemLineController(ProblemLineService service, SmartReplyRateLimiter limiter) {
+        this.service = service; this.limiter = limiter;
     }
     @PostMapping(value="/linha-problema", consumes=MediaType.APPLICATION_JSON_VALUE, produces=MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<?> line(@Valid @RequestBody ProblemLineRequest request) {
         if (!limiter.tryAcquire()) return ResponseEntity.status(429).header("Retry-After","60")
                 .body(Map.of("erro","Limite atingido. Tente novamente em um minuto."));
-        try { return ResponseEntity.ok(new ProblemLineResponse(normalize(gemini.generateProblemLine(request.mensagens().trim())))); }
+        try { return ResponseEntity.ok(new ProblemLineResponse(normalize(service.line(request.mensagens().trim())))); }
         catch (GeminiIntegrationException e) {
             return ResponseEntity.status(e.getHttpStatus()).body(Map.of("erro","Não foi possível resumir o problema."));
         }

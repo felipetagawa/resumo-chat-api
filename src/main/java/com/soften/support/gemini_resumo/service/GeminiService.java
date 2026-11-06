@@ -234,7 +234,7 @@ public class GeminiService {
                 Math.min(2, properties.getSafeMaxAttempts()), true, model, "smart_reply"));
     }
 
-    private static final String PROBLEM_LINE_POLICY = """
+    static final String PROBLEM_LINE_POLICY = """
             Você recebe mensagens de um cliente do suporte técnico de um ERP (NF-e, NFC-e, DANFE, \
             certificado digital, PDV, financeiro, estoque). Escreva UM rótulo curto em português, com no \
             máximo 32 caracteres, que identifique o problema principal do cliente numa fila de atendimento. \

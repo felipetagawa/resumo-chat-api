@@ -1,10 +1,13 @@
 package com.soften.support.gemini_resumo.service;
 
+import com.soften.support.gemini_resumo.docs.ClaudeService;
 import com.soften.support.gemini_resumo.models.dtos.SummaryDto;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
+import java.time.Duration;
 import java.util.List;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
@@ -97,5 +100,44 @@ class SuggestionServiceTest {
 
         assertSame(failure, assertThrows(GeminiIntegrationException.class,
                 () -> service.generateTips("Atendimento atual", summary)));
+    }
+
+    @SuppressWarnings("unchecked")
+    @Test
+    void claudeWritesTheTipsFromTheSamePromptAndGeminiIsNotCalled() {
+        ClaudeService claude = mock(ClaudeService.class);
+        when(claude.generate(anyString(), anyList(), anyLong(), any(Duration.class), eq("tips")))
+                .thenReturn(Optional.of("- Verifique o retorno da SEFAZ.\n- Confira o ambiente de emissão."));
+
+        assertEquals(List.of("Verifique o retorno da SEFAZ.", "Confira o ambiente de emissão."),
+                new SuggestionService(gemini, claude).generateTips("Atendimento atual", summary));
+
+        ArgumentCaptor<List<ClaudeService.Turn>> turns = ArgumentCaptor.forClass(List.class);
+        verify(claude).generate(eq(SuggestionService.TIPS_POLICY), turns.capture(),
+                eq(SuggestionService.CLAUDE_MAX_TOKENS), eq(SuggestionService.CLAUDE_TIMEOUT), eq("tips"));
+        assertEquals(1, turns.getValue().size());
+        assertTrue(turns.getValue().get(0).fromUser());
+        assertTrue(turns.getValue().get(0).text().contains("ATENDIMENTO ATUAL:\nAtendimento atual"));
+        verifyNoInteractions(gemini);
+    }
+
+    @SuppressWarnings("unchecked")
+    @Test
+    void geminiGetsTheUnchangedPromptWhenClaudeFails() {
+        ClaudeService claude = mock(ClaudeService.class);
+        when(claude.generate(anyString(), anyList(), anyLong(), any(Duration.class), anyString()))
+                .thenReturn(Optional.empty());
+        when(gemini.ask(anyString())).thenReturn("- Confira o ambiente de emissão.");
+
+        assertEquals(List.of("Confira o ambiente de emissão."),
+                new SuggestionService(gemini, claude).generateTips("Atendimento atual", summary));
+
+        ArgumentCaptor<List<ClaudeService.Turn>> turns = ArgumentCaptor.forClass(List.class);
+        verify(claude).generate(anyString(), turns.capture(), anyLong(), any(Duration.class), anyString());
+        ArgumentCaptor<String> prompt = ArgumentCaptor.forClass(String.class);
+        verify(gemini).ask(prompt.capture());
+        assertTrue(prompt.getValue().startsWith("Você é um analista técnico de suporte."));
+        assertTrue(prompt.getValue().contains("Não inclua título.\n\nPROBLEMA ATUAL:\nFalha na emissão de NF-e."));
+        assertEquals(SuggestionService.TIPS_POLICY + turns.getValue().get(0).text(), prompt.getValue());
     }
 }
