@@ -28,13 +28,15 @@ public class ProblemLineController {
     }
     static String normalize(String raw) {
         List<String> lines = (raw == null ? "" : raw).lines().map(String::trim).filter(l -> !l.isEmpty()).toList();
-        // Drop a preamble line ("Aqui está o rótulo:") before the label; a label split across lines is joined.
-        String text = String.join(" ", lines.size() > 1 ? lines.stream().filter(l -> !l.endsWith(":")).toList() : lines);
+        // The label is the first line after any preamble ("Aqui está o rótulo:"); an explanation the model
+        // writes below it is never glued on, since the extension stores the label permanently.
+        String text = lines.stream().filter(l -> !l.endsWith(":")).findFirst().orElse(lines.isEmpty() ? "" : lines.get(0));
         String line = text.replace("**", "").replace("`", "").replaceAll("^#+\\s*", "")
                 .replaceAll("(?iu)^(?:rótulo|etiqueta|label)\\s*:\\s*", "")
                 .replaceAll("\\s+", " ").trim()
                 .replaceAll("^[\"'“”*]+|[\"'“”*]+$", "").replaceAll("\\.+$", "").trim();
-        if (line.equalsIgnoreCase("SEM_PROBLEMA")) return "";
+        // "SEM_PROBLEMA. As mensagens são só uma saudação" is the marker too.
+        if (line.regionMatches(true, 0, "SEM_PROBLEMA", 0, "SEM_PROBLEMA".length())) return "";
         if (line.length() <= LIMIT) return line;
         String cut = line.substring(0, LIMIT - 1);
         // Prefer a word boundary, unless it would throw away more than half the label.

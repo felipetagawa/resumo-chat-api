@@ -67,7 +67,20 @@ class ProblemLineControllerTest {
         // A colon inside the label itself stays.
         assertEquals("Erro: XML inválido", ProblemLineController.normalize("Erro: XML inválido"));
     }
-    @Test void normalizeStillJoinsALabelSplitAcrossLines() {
-        assertEquals("NF-e rejeição 539", ProblemLineController.normalize("NF-e rejeição\n539"));
+    @Test void onlyTheFirstLineIsTheLabel() {
+        // The extension stores the label permanently: an explanation below it must never be glued on.
+        assertEquals("NF-e rejeição 539", ProblemLineController.normalize("NF-e rejeição 539\n\nO cliente relata a rejeição ao emitir."));
+        assertEquals("NF-e rejeição 539", ProblemLineController.normalize("NF-e rejeição 539\nO cliente relata a rejeição ao emitir."));
+        assertEquals("NF-e rejeição 539", ProblemLineController.normalize("Aqui está o rótulo:\n\nNF-e rejeição 539\n\nMotivo: duplicidade."));
+    }
+    @Test void anyReplyStartingWithTheNoProblemMarkerIsAnEmptyLine() {
+        assertEquals("", ProblemLineController.normalize("SEM_PROBLEMA\n\nAs mensagens são só uma saudação."));
+        assertEquals("", ProblemLineController.normalize("SEM_PROBLEMA. As mensagens não descrevem um problema"));
+        assertEquals("", ProblemLineController.normalize("Rótulo: sem_problema"));
+        assertEquals("", ProblemLineController.normalize("Resposta:\n**SEM_PROBLEMA**\nO cliente só cumprimentou."));
+    }
+    @Test void aMultiLineNoProblemReplyIsStoredAsEmpty() throws Exception {
+        when(gemini.generateProblemLine(anyString())).thenReturn("SEM_PROBLEMA\n\nAs mensagens são só uma saudação.");
+        send(Map.of("mensagens", "bom dia")).andExpect(status().isOk()).andExpect(jsonPath("$.linha").value(""));
     }
 }
