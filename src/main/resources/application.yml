@@ -27,11 +27,14 @@ typesafe:
 smart-reply:
   rate-limit-per-minute: ${SMART_REPLY_RATE_LIMIT_PER_MINUTE:30}
 
-# Claude for the documentation chat and Smart Reply; without a key both use Gemini.
+# Claude first, Gemini as fallback; without a key every feature uses Gemini.
+# model: documentation chat and Smart Reply. bulk-model: problem line, Gerar resumo and Processar dica,
+# the busiest calls; keep it on Haiku so a bigger `model` does not multiply their cost.
 anthropic:
   api:
     key: ${ANTHROPIC_API_KEY:}
     model: ${ANTHROPIC_MODEL:claude-haiku-5-5}
+    bulk-model: ${ANTHROPIC_BULK_MODEL:claude-haiku-5-5}
 
 docs-chat:
   rate-limit-per-minute: ${DOCS_CHAT_RATE_LIMIT_PER_MINUTE:30}
