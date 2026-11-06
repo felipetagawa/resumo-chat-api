@@ -1,0 +1,90 @@
+package com.soften.support.gemini_resumo.service;
+
+import com.soften.support.gemini_resumo.docs.ClaudeService;
+import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
+
+import java.time.Duration;
+import java.util.List;
+import java.util.Optional;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
+
+class SummaryServiceTest {
+
+    static final String FULL_SUMMARY = """
+            **PROBLEMA / DÚVIDA:** O cliente tentou emitir a NF-e e recebeu a rejeição 539, impedindo a venda.
+
+            **SOLUÇÃO APRESENTADA:** Consultei a chave na SEFAZ e reenviei a número doc: 1520.
+
+            **OPORTUNIDADE DE UPSELL:** NÃO. Não havia contexto para oferta.
+
+            **PRINTS DE ERRO OU DE MENSAGENS RELEVANTES:** Sim
+
+            **HUMOR DO CLIENTE:** NEUTRO.
+
+            **MÓDULO:** NF-E (NOTA FISCAL ELETRÔNICA)
+            """;
+
+    @SuppressWarnings("unchecked")
+    @Test void claudeWritesTheSummaryWithTheSamePromptAndGeminiIsNotCalled() {
+        ClaudeService claude = mock(ClaudeService.class);
+        when(claude.generate(anyString(), anyList(), anyLong(), any(Duration.class), eq("summary")))
+                .thenReturn(Optional.of(FULL_SUMMARY));
+        GeminiService gemini = mock(GeminiService.class);
+
+        assertEquals(FULL_SUMMARY, new SummaryService(gemini, claude).summarize("Cliente: rejeição 539", "liguei depois"));
+
+        ArgumentCaptor<List<ClaudeService.Turn>> turns = ArgumentCaptor.forClass(List.class);
+        verify(claude).generate(eq(GeminiService.createSummaryPrompt()), turns.capture(),
+                eq(SummaryService.CLAUDE_MAX_TOKENS), eq(SummaryService.CLAUDE_TIMEOUT), eq("summary"));
+        assertEquals(1, turns.getValue().size());
+        assertTrue(turns.getValue().get(0).fromUser());
+        assertEquals(GeminiService.buildSummaryInput("Cliente: rejeição 539", "liguei depois"),
+                turns.getValue().get(0).text());
+        verifyNoInteractions(gemini);
+    }
+
+    @Test void geminiSummarizesWhenClaudeIsNotConfigured() {
+        GeminiService gemini = mock(GeminiService.class);
+        when(gemini.generateSummary("chat", null)).thenReturn("resumo gemini");
+
+        assertEquals("resumo gemini", new SummaryService(gemini).summarize("chat", null));
+        assertEquals("resumo gemini", new SummaryService(gemini, null).summarize("chat", null));
+    }
+
+    @Test void geminiSummarizesWhenClaudeFailsOrTimesOut() {
+        ClaudeService claude = mock(ClaudeService.class);
+        when(claude.generate(anyString(), anyList(), anyLong(), any(Duration.class), anyString()))
+                .thenReturn(Optional.empty());
+        GeminiService gemini = mock(GeminiService.class);
+        when(gemini.generateSummary("chat", "extra")).thenReturn("resumo gemini");
+
+        assertEquals("resumo gemini", new SummaryService(gemini, claude).summarize("chat", "extra"));
+        verify(gemini).generateSummary("chat", "extra");
+    }
+
+    @Test void geminiSummarizesWhenClaudeLeavesOutASection() {
+        // A reply cut at max_tokens, or one that drifted from the format the extension parses.
+        String truncated = FULL_SUMMARY.substring(0, FULL_SUMMARY.indexOf("**MÓDULO:**"));
+        ClaudeService claude = mock(ClaudeService.class);
+        when(claude.generate(anyString(), anyList(), anyLong(), any(Duration.class), anyString()))
+                .thenReturn(Optional.of(truncated));
+        GeminiService gemini = mock(GeminiService.class);
+        when(gemini.generateSummary("chat", null)).thenReturn("resumo gemini");
+
+        assertEquals("resumo gemini", new SummaryService(gemini, claude).summarize("chat", null));
+    }
+
+    @Test void geminiErrorsStillReachTheCallerWhenClaudeCannotAnswer() {
+        GeminiService gemini = mock(GeminiService.class);
+        GeminiIntegrationException unavailable = new GeminiIntegrationException(
+                "indisponível", org.springframework.http.HttpStatus.BAD_GATEWAY, (Throwable) null);
+        when(gemini.generateSummary("chat", null)).thenThrow(unavailable);
+
+        assertSame(unavailable, assertThrows(GeminiIntegrationException.class,
+                () -> new SummaryService(gemini).summarize("chat", null)));
+    }
+}

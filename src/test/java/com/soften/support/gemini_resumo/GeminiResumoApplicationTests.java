@@ -24,7 +24,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@SpringBootTest(properties = "gemini.api.key=test-key")
+// No Anthropic key, even if the shell exports one: these tests must never call Claude for real.
+@SpringBootTest(properties = {"gemini.api.key=test-key", "anthropic.api.key="})
 @AutoConfigureMockMvc
 class GeminiResumoApplicationTests {
     @Autowired MockMvc mockMvc;

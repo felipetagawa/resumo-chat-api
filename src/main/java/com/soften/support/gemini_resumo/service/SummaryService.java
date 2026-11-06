@@ -5,20 +5,52 @@ import com.soften.support.gemini_resumo.models.dtos.SummaryDto;
 import com.soften.support.gemini_resumo.models.enums.ModulesCalled;
 import com.soften.support.gemini_resumo.models.enums.MoodClient;
 import com.soften.support.gemini_resumo.utils.ModuleMapper;
+import com.soften.support.gemini_resumo.docs.ClaudeService;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import java.time.Duration;
+import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 @Service
 public class SummaryService {
 
-    private final GeminiService geminiService;
+    // Room for low-effort thinking plus a long summary (~1k tokens); billed only on what is used.
+    static final long CLAUDE_MAX_TOKENS = 4096;
+    // Gemini gets 8s per attempt for the same job; the SDK retries once, so ~24s at worst before Gemini.
+    static final Duration CLAUDE_TIMEOUT = Duration.ofSeconds(12);
+    // Every label the prompt asks for; MÓDULO comes last, so a reply cut at max_tokens misses it.
+    private static final List<String> SECTIONS = List.of("PROBLEMA / DÚVIDA:", "SOLUÇÃO APRESENTADA:",
+            "OPORTUNIDADE DE UPSELL:", "PRINTS DE ERRO OU DE MENSAGENS RELEVANTES:", "HUMOR DO CLIENTE:", "MÓDULO:");
 
-    public SummaryService(GeminiService geminiService) {
+    private final GeminiService geminiService;
+    private final ClaudeService claude;
+
+    public SummaryService(GeminiService geminiService) { this(geminiService, null); }
+
+    @Autowired
+    public SummaryService(GeminiService geminiService, ClaudeService claude) {
         this.geminiService = geminiService;
+        this.claude = claude;
     }
 
+    /** Gerar resumo: Claude first when configured; Gemini answers when it is absent, slow, failing or off-format. */
+    public String summarize(String textService, String promptComplement) {
+        String summary = claude == null ? null : claude.generate(GeminiService.createSummaryPrompt(),
+                List.of(new ClaudeService.Turn(true, GeminiService.buildSummaryInput(textService, promptComplement))),
+                CLAUDE_MAX_TOKENS, CLAUDE_TIMEOUT, "summary")
+                .filter(SummaryService::hasEverySection).orElse(null);
+        return summary != null ? summary : geminiService.generateSummary(textService, promptComplement);
+    }
+
+    private static boolean hasEverySection(String summary) {
+        String upper = summary.toUpperCase();
+        return SECTIONS.stream().allMatch(upper::contains);
+    }
+
+    // Processar dica stays on Gemini.
     public String generateFormattedSummary(String textService, String promptComplement) {
         return geminiService.generateSummary(textService, promptComplement);
     }

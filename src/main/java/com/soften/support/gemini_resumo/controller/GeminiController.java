@@ -2,6 +2,7 @@ package com.soften.support.gemini_resumo.controller;
 
 import com.soften.support.gemini_resumo.service.GeminiService;
 import com.soften.support.gemini_resumo.service.GeminiIntegrationException;
+import com.soften.support.gemini_resumo.service.SummaryService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -15,8 +16,10 @@ import java.util.Map;
 public class GeminiController {
 
     private final GeminiService geminiService;
-    public GeminiController(GeminiService geminiService) {
+    private final SummaryService summaryService;
+    public GeminiController(GeminiService geminiService, SummaryService summaryService) {
         this.geminiService = geminiService;
+        this.summaryService = summaryService;
     }
 
     @PostMapping(value = "/resumir", consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
@@ -38,7 +41,7 @@ public class GeminiController {
 
         try {
             String normalizedPromptComplement = geminiService.validateAndNormalizePromptComplement(promptComplement);
-            String summary = geminiService.generateSummary(texto, normalizedPromptComplement);
+            String summary = summaryService.summarize(texto, normalizedPromptComplement);
 
             return ResponseEntity.ok(Map.of("summary", summary));
         } catch (IllegalArgumentException e) {
@@ -60,7 +63,7 @@ public class GeminiController {
                     .body(Map.of("erro", "Body não pode estar vazio."));
         }
         try {
-            String resumo = geminiService.generateSummary(texto.trim());
+            String resumo = summaryService.summarize(texto.trim(), null);
 
             return ResponseEntity.ok(Map.of("summary", resumo));
         } catch (GeminiIntegrationException e) {

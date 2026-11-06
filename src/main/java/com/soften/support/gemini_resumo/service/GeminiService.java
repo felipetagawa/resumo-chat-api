@@ -112,7 +112,8 @@ public class GeminiService {
                 + normalizedComplement;
     }
 
-    private String createSummaryPrompt() {
+    // Package-visible so SummaryService sends Claude the same prompt and input as Gemini.
+    static String createSummaryPrompt() {
         return """
                     **Instrução Importante:** Analise toda a conversa do início ao fim.
                     Ignore qualquer mensagem enviada pelo bot chamado "Automatico".
@@ -193,7 +194,7 @@ public class GeminiService {
                     """;
     }
 
-    private String buildSummaryInput(String textService, String promptComplement) {
+    static String buildSummaryInput(String textService, String promptComplement) {
         StringBuilder input = new StringBuilder();
         input.append("ATENDIMENTO ANALISADO:\n")
                 .append(textService)

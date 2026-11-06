@@ -3,6 +3,7 @@ package com.soften.support.gemini_resumo.controller;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.soften.support.gemini_resumo.service.GeminiService;
 import com.soften.support.gemini_resumo.service.GeminiIntegrationException;
+import com.soften.support.gemini_resumo.service.SummaryService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
@@ -33,24 +34,41 @@ class GeminiControllerTest {
     @MockBean
     private GeminiService geminiService;
 
+    @MockBean
+    private SummaryService summaryService;
+
     @Test
     void resumirJsonWithOnlyTextoShouldKeepOriginalFlow() throws Exception {
         when(geminiService.validateAndNormalizePromptComplement(isNull())).thenReturn(null);
-        when(geminiService.generateSummary("chat content", null)).thenReturn("summary");
+        when(summaryService.summarize("chat content", null)).thenReturn("summary");
 
         mockMvc.perform(post("/api/gemini/resumir")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of("texto", "chat content"))))
-                .andExpect(status().isOk());
+                .andExpect(status().isOk())
+                .andExpect(content().json("{\"summary\":\"summary\"}", true));
 
-        verify(geminiService).generateSummary("chat content", null);
+        verify(summaryService).summarize("chat content", null);
+    }
+
+    @Test
+    void resumirPlainTextShouldSummarizeTrimmedBodyWithoutComplement() throws Exception {
+        when(summaryService.summarize("chat content", null)).thenReturn("summary");
+
+        mockMvc.perform(post("/api/gemini/resumir")
+                        .contentType(MediaType.TEXT_PLAIN)
+                        .content("  chat content  "))
+                .andExpect(status().isOk())
+                .andExpect(content().json("{\"summary\":\"summary\"}", true));
+
+        verify(summaryService).summarize("chat content", null);
     }
 
     @Test
     void resumirJsonWithPromptComplementShouldAppendComplementFlow() throws Exception {
         when(geminiService.validateAndNormalizePromptComplement("extra user instruction"))
                 .thenReturn("extra user instruction");
-        when(geminiService.generateSummary("chat content", "extra user instruction")).thenReturn("summary");
+        when(summaryService.summarize("chat content", "extra user instruction")).thenReturn("summary");
 
         mockMvc.perform(post("/api/gemini/resumir")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -60,13 +78,13 @@ class GeminiControllerTest {
                         ))))
                 .andExpect(status().isOk());
 
-        verify(geminiService).generateSummary("chat content", "extra user instruction");
+        verify(summaryService).summarize("chat content", "extra user instruction");
     }
 
     @Test
     void resumirJsonWithBlankPromptComplementShouldIgnoreComplement() throws Exception {
         when(geminiService.validateAndNormalizePromptComplement(isNull())).thenReturn(null);
-        when(geminiService.generateSummary("chat content", null)).thenReturn("summary");
+        when(summaryService.summarize("chat content", null)).thenReturn("summary");
 
         mockMvc.perform(post("/api/gemini/resumir")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -76,7 +94,7 @@ class GeminiControllerTest {
                         ))))
                 .andExpect(status().isOk());
 
-        verify(geminiService).generateSummary("chat content", null);
+        verify(summaryService).summarize("chat content", null);
     }
 
     @Test
@@ -92,13 +110,13 @@ class GeminiControllerTest {
                         ))))
                 .andExpect(status().isBadRequest());
 
-        verify(geminiService, never()).generateSummary(anyString(), anyString());
+        verify(summaryService, never()).summarize(anyString(), anyString());
     }
 
     @Test
     void resumirJsonShouldReturnFriendlyStableErrorWhenGeminiIsUnavailable() throws Exception {
         when(geminiService.validateAndNormalizePromptComplement(isNull())).thenReturn(null);
-        when(geminiService.generateSummary("chat content", null))
+        when(summaryService.summarize("chat content", null))
                 .thenThrow(new GeminiIntegrationException(
                         "O serviço de geração de resumo está temporariamente indisponível. Tente novamente em alguns instantes.",
                         org.springframework.http.HttpStatus.BAD_GATEWAY,
@@ -119,7 +137,7 @@ class GeminiControllerTest {
     @Test
     void resumirJsonShouldNotExposeInternalGeminiDetails() throws Exception {
         when(geminiService.validateAndNormalizePromptComplement(isNull())).thenReturn(null);
-        when(geminiService.generateSummary("chat content", null))
+        when(summaryService.summarize("chat content", null))
                 .thenThrow(new GeminiIntegrationException(
                         "O serviço de geração de resumo está temporariamente indisponível. Tente novamente em alguns instantes.",
                         org.springframework.http.HttpStatus.BAD_GATEWAY,
@@ -138,7 +156,7 @@ class GeminiControllerTest {
     @Test
     void resumirJsonShouldReturnInternalServerErrorForPermanentGeminiFailure() throws Exception {
         when(geminiService.validateAndNormalizePromptComplement(isNull())).thenReturn(null);
-        when(geminiService.generateSummary("chat content", null))
+        when(summaryService.summarize("chat content", null))
                 .thenThrow(new GeminiIntegrationException(
                         "Não foi possível concluir a geração de resumo no momento.",
                         org.springframework.http.HttpStatus.INTERNAL_SERVER_ERROR,
