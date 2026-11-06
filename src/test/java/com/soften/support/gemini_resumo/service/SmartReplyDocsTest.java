@@ -28,7 +28,7 @@ class SmartReplyDocsTest {
     @Test void claudeGetsMatchingManualPassagesAndTheSourceComesBack() throws Exception {
         ClaudeService claude = mock(ClaudeService.class);
         when(claude.generate(anyString(), anyList(), anyLong(), any(Duration.class), eq("smart_reply")))
-                .thenReturn(Optional.of("Consegue me mandar a chave de acesso da nota?"));
+                .thenReturn(Optional.of("Consegue me mandar a chave de acesso da nota?\nFONTES: 1"));
         GeminiService gemini = mock(GeminiService.class);
         var request = new SmartReplyRequest("Cliente: deu rejeição 539 duplicidade na NF-e", null, null, List.of(), false);
 
